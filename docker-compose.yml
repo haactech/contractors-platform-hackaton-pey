@@ -13,8 +13,12 @@ services:
       DATABASE_PATH: /data/app.db
       CLIENTS_DATABASE_PATH: /data/clients.db
       PAYMENTS_DATABASE_PATH: /data/payments.db
-      PAYMENT_SUCCESS_URL: https://example.com/payments/success
-      PAYMENT_BACK_URL: https://example.com/payments/back
+      PEY_API_KEY: ${PEY_API_KEY:-}
+      PEY_API_URL: ${PEY_API_URL:-https://api.pey.mx}
+      PEY_WEBHOOK_SECRET: ${PEY_WEBHOOK_SECRET:-}
+      PAYMENT_SUCCESS_URL: ${PAYMENT_SUCCESS_URL:-https://example.com/payments/success}
+      PAYMENT_BACK_URL: ${PAYMENT_BACK_URL:-https://example.com/payments/back}
+      AUTH_MODE: ${AUTH_MODE:-demo}
     ports:
       - "${BACKEND_PORT:-3001}:3001"
     volumes:
@@ -53,6 +57,13 @@ services:
     profiles: [prod]
     build:
       context: apps/backend
+    environment:
+      PEY_API_KEY: ${PEY_API_KEY:-}
+      PEY_API_URL: ${PEY_API_URL:-https://api.pey.mx}
+      PEY_WEBHOOK_SECRET: ${PEY_WEBHOOK_SECRET:-}
+      PAYMENT_SUCCESS_URL: ${PAYMENT_SUCCESS_URL:-https://example.com/payments/success}
+      PAYMENT_BACK_URL: ${PAYMENT_BACK_URL:-https://example.com/payments/back}
+      AUTH_MODE: ${AUTH_MODE:-demo}
     ports:
       - "${API_PORT:-8080}:8080"
 

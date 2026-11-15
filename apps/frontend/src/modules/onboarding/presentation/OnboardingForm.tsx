@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
 import { OnboardingError, type OnboardingGateway } from '../application/onboarding-gateway';
 import {
   BUSINESS_ACTIVITIES,
@@ -12,7 +12,6 @@ import {
   validateOnboarding,
   validateOnboardingStep,
   type FieldErrors,
-  type Onboarding,
   type OnboardingInput,
   type OnboardingStepNumber,
 } from '../domain/onboarding';
@@ -49,8 +48,9 @@ const STEPS: readonly StepMeta[] = [
   {
     step: 1,
     shortLabel: 'Tus datos',
-    title: '1. ¿Quién eres y qué servicios ofreces?',
-    description: 'Usaremos estos datos para personalizar tus solicitudes de cobro.',
+    title: '1. ¿Quién eres y dónde recibes tus pagos?',
+    description:
+      'Necesitamos tus datos básicos y tu CLABE para activar tu cuenta de cobro y depositar directo a tu banco.',
     fields: [
       {
         name: 'name',
@@ -65,38 +65,6 @@ const STEPS: readonly StepMeta[] = [
         placeholder: 'Ej. Electricista, maestra de inglés',
         hint: 'Ayuda a tus clientes a reconocer rápido el servicio.',
       },
-    ],
-  },
-  {
-    step: 2,
-    shortLabel: 'Tu negocio',
-    title: '2. Tu negocio y cuenta de depósito',
-    description: 'Así te verán tus clientes al pagar y aquí llegarán tus depósitos.',
-    fields: [
-      {
-        name: 'businessName',
-        label: 'Nombre del negocio',
-        autoComplete: 'organization',
-        placeholder: 'Ej. Servicios Eléctricos García',
-      },
-      {
-        name: 'businessActivity',
-        label: 'Giro del negocio',
-        options: [...BUSINESS_ACTIVITIES, OTHER_BUSINESS_ACTIVITY],
-      },
-      {
-        name: 'rfc',
-        label: 'RFC',
-        maxLength: 13,
-        placeholder: 'Ej. GALA900101XXX',
-        hint: '12 o 13 caracteres.',
-      },
-      {
-        name: 'taxRegime',
-        label: 'Régimen fiscal (opcional)',
-        optional: true,
-        placeholder: 'Ej. RESICO',
-      },
       {
         name: 'clabe',
         label: 'CLABE para recibir tus pagos',
@@ -104,7 +72,43 @@ const STEPS: readonly StepMeta[] = [
         inputMode: 'numeric',
         maxLength: 22,
         placeholder: '18 dígitos de tu cuenta bancaria',
-        hint: '18 dígitos. El dinero llega directo a esta cuenta; nosotros nunca lo tocamos.',
+        hint: 'Obligatoria. El dinero llega directo a esta cuenta; nosotros nunca lo tocamos.',
+      },
+    ],
+  },
+  {
+    step: 2,
+    shortLabel: 'Tu negocio (opcional)',
+    title: '2. Datos de tu negocio (opcional)',
+    description:
+      'Si trabajas por tu cuenta o aún no tienes razón social o RFC, puedes omitir este paso y editarlo después en tu perfil.',
+    fields: [
+      {
+        name: 'businessName',
+        label: 'Nombre del negocio',
+        optional: true,
+        autoComplete: 'organization',
+        placeholder: 'Ej. Servicios Eléctricos García',
+      },
+      {
+        name: 'businessActivity',
+        label: 'Giro del negocio',
+        optional: true,
+        options: [...BUSINESS_ACTIVITIES, OTHER_BUSINESS_ACTIVITY],
+      },
+      {
+        name: 'rfc',
+        label: 'RFC',
+        optional: true,
+        maxLength: 13,
+        placeholder: 'Ej. GALA900101XXX',
+        hint: '12 o 13 caracteres (opcional).',
+      },
+      {
+        name: 'taxRegime',
+        label: 'Régimen fiscal',
+        optional: true,
+        placeholder: 'Ej. RESICO',
       },
     ],
   },
@@ -165,11 +169,6 @@ type SubmissionState =
   | { status: 'idle' | 'saving' }
   | { status: 'error'; message: string }
   | { status: 'success'; id: string };
-
-type LookupState =
-  | { status: 'idle' | 'loading' }
-  | { status: 'error'; message: string }
-  | { status: 'found'; record: Onboarding };
 
 const INITIAL_INPUT: OnboardingInput = {
   name: '',
@@ -266,22 +265,26 @@ function CheckIcon() {
   );
 }
 
-export function OnboardingForm({ gateway, onCreated }: { gateway: OnboardingGateway; onCreated?: (id: string) => void }) {
+export function OnboardingForm({
+  gateway,
+  onCreated,
+  onAlreadyOnboarded,
+  onAuthInvalid,
+}: {
+  gateway: OnboardingGateway;
+  onCreated?: (id: string) => void;
+  onAlreadyOnboarded?: () => void;
+  onAuthInvalid?: () => void;
+}) {
   const [phase, setPhase] = useState<Phase>('welcome');
   const [formState, setFormState] = useState<OnboardingInput>(INITIAL_INPUT);
   const [activityChoice, setActivityChoice] = useState('');
   const [errors, setErrors] = useState<FieldErrors>({});
   const [submission, setSubmission] = useState<SubmissionState>({ status: 'idle' });
-  const [showLookup, setShowLookup] = useState(false);
-  const [lookupId, setLookupId] = useState('');
-  const [lookup, setLookup] = useState<LookupState>({ status: 'idle' });
 
   const formRef = useRef<HTMLFormElement>(null);
   const pending = useRef(false);
-  const lookupAbort = useRef<AbortController | null>(null);
   const baseId = useId();
-
-  useEffect(() => () => lookupAbort.current?.abort(), []);
 
   function focusField(fieldName?: string) {
     if (!fieldName) return;
@@ -361,6 +364,28 @@ export function OnboardingForm({ gateway, onCreated }: { gateway: OnboardingGate
     focusField(ONBOARDING_STEP_FIELDS[nextStep][0]);
   }
 
+  function handleSkipStepTwo() {
+    if (phase !== 2 || submission.status === 'saving') return;
+    setFormState((prev) => ({
+      ...prev,
+      businessName: '',
+      businessActivity: '',
+      rfc: '',
+      taxRegime: '',
+    }));
+    setActivityChoice('');
+    setErrors((prev) => {
+      const next = { ...prev };
+      for (const field of ONBOARDING_STEP_FIELDS[2]) {
+        delete next[field];
+      }
+      return next;
+    });
+    setSubmission({ status: 'idle' });
+    setPhase(3);
+    focusField(ONBOARDING_STEP_FIELDS[3][0]);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (phase !== 3) {
@@ -390,6 +415,14 @@ export function OnboardingForm({ gateway, onCreated }: { gateway: OnboardingGate
       onCreated?.(onboarding.id);
     } catch (error) {
       if (error instanceof OnboardingError) {
+        if (error.status === 409) {
+          onAlreadyOnboarded?.();
+          return;
+        }
+        if (error.status === 401 || error.status === 403) {
+          onAuthInvalid?.();
+          return;
+        }
         const fieldKeys = Object.keys(error.fields);
         if (fieldKeys.length) {
           setErrors(error.fields);
@@ -404,27 +437,6 @@ export function OnboardingForm({ gateway, onCreated }: { gateway: OnboardingGate
       }
     } finally {
       pending.current = false;
-    }
-  }
-
-  async function handleLookup(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const trimmed = lookupId.trim();
-    if (!trimmed) {
-      setLookup({ status: 'error', message: 'Escribe un folio de registro para consultar.' });
-      return;
-    }
-    lookupAbort.current?.abort();
-    const controller = new AbortController();
-    lookupAbort.current = controller;
-    setLookup({ status: 'loading' });
-    try {
-      const record = await gateway.find(trimmed, controller.signal);
-      setLookup({ status: 'found', record });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === 'AbortError') return;
-      const message = error instanceof OnboardingError ? error.message : 'No fue posible consultar ese folio.';
-      setLookup({ status: 'error', message });
     }
   }
 
@@ -474,80 +486,7 @@ export function OnboardingForm({ gateway, onCreated }: { gateway: OnboardingGate
               <span>Comenzar registro</span>
               <ArrowRightIcon />
             </button>
-            <button
-              type="button"
-              className="ob-btn-ghost"
-              aria-expanded={showLookup}
-              onClick={() => setShowLookup((prev) => !prev)}
-            >
-              {showLookup ? 'Ocultar consulta de folio' : 'Ya tengo un folio registrado'}
-            </button>
           </div>
-
-          {showLookup && (
-            <div className="ob-lookup" aria-label="Consultar registro existente">
-              <h3>Recupera tu cuenta con tu folio</h3>
-              <p className="ob-subtitle">Ingresa el folio guardado en tu registro anterior para retomar tu espacio.</p>
-              <form className="ob-lookup-form" onSubmit={handleLookup} noValidate>
-                <div className="ob-lookup-field">
-                  <label htmlFor={`${baseId}-lookup-id`}>Folio de registro</label>
-                  <input
-                    id={`${baseId}-lookup-id`}
-                    className="ob-lookup-input"
-                    value={lookupId}
-                    onChange={(event) => setLookupId(event.target.value)}
-                    placeholder="Ej. 30fd0ba2..."
-                    aria-invalid={lookup.status === 'error'}
-                  />
-                </div>
-                <button type="submit" className="ob-btn-secondary" disabled={lookup.status === 'loading'}>
-                  {lookup.status === 'loading' ? 'Consultando...' : 'Buscar folio'}
-                </button>
-              </form>
-
-              {lookup.status === 'error' && (
-                <p role="alert" className="ob-alert">
-                  {lookup.message}
-                </p>
-              )}
-
-              {lookup.status === 'found' && (
-                <div className="ob-record-card" role="status">
-                  <div className="ob-record-head">
-                    <span className="ob-folio-code">Folio: {lookup.record.id}</span>
-                    {onCreated && (
-                      <button
-                        type="button"
-                        className="ob-btn-primary"
-                        onClick={() => onCreated(lookup.record.id)}
-                      >
-                        <span>Entrar con este folio</span>
-                        <ArrowRightIcon />
-                      </button>
-                    )}
-                  </div>
-                  <dl className="ob-record-grid">
-                    <div>
-                      <dt>Titular</dt>
-                      <dd>{lookup.record.name}</dd>
-                    </div>
-                    <div>
-                      <dt>Negocio</dt>
-                      <dd>{lookup.record.businessName}</dd>
-                    </div>
-                    <div>
-                      <dt>RFC</dt>
-                      <dd>{lookup.record.rfc}</dd>
-                    </div>
-                    <div>
-                      <dt>CLABE verificada</dt>
-                      <dd>{maskClabe(lookup.record.clabe)}</dd>
-                    </div>
-                  </dl>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       ) : (
         <>
@@ -762,10 +701,22 @@ export function OnboardingForm({ gateway, onCreated }: { gateway: OnboardingGate
               </button>
 
               {phase < 3 ? (
-                <button type="button" className="ob-btn-primary" onClick={handleNextStep}>
-                  <span>Continuar</span>
-                  <ArrowRightIcon />
-                </button>
+                <div className="ob-footer-actions">
+                  {phase === 2 && (
+                    <button
+                      type="button"
+                      className="ob-btn-ghost"
+                      disabled={submission.status === 'saving'}
+                      onClick={handleSkipStepTwo}
+                    >
+                      Omitir este paso
+                    </button>
+                  )}
+                  <button type="button" className="ob-btn-primary" onClick={handleNextStep}>
+                    <span>Continuar</span>
+                    <ArrowRightIcon />
+                  </button>
+                </div>
               ) : (
                 <button type="submit" className="ob-btn-primary" disabled={submission.status === 'saving'}>
                   {submission.status === 'saving' ? 'Guardando registro...' : 'Finalizar registro'}

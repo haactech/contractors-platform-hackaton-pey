@@ -26,3 +26,14 @@ type Onboarding struct {
 	ID string `json:"id"`
 	Input
 }
+
+// ProfilePatch actualiza de forma parcial el perfil del contratista y su negocio/CLABE.
+type ProfilePatch struct {
+	Name             *string `json:"name,omitempty"`
+	Profession       *string `json:"profession,omitempty"`
+	BusinessName     *string `json:"businessName,omitempty"`
+	BusinessActivity *string `json:"businessActivity,omitempty"`
+	RFC              *string `json:"rfc,omitempty"`
+	TaxRegime        *string `json:"taxRegime,omitempty"`
+	CLABE            *string `json:"clabe,omitempty"`
+}

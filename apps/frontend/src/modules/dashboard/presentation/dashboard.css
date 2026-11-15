@@ -659,13 +659,20 @@
   background: var(--db-surface-subtle);
 }
 
-.db-qr-svg {
+.db-qr-svg,
+.db-qr-img {
   width: 156px;
   height: 156px;
   padding: var(--db-space-2);
   border-radius: var(--db-radius-sm);
   border: 1px solid var(--db-border-strong);
   background: #ffffff;
+}
+
+.db-qr-img {
+  width: 220px;
+  height: 220px;
+  object-fit: contain;
 }
 
 .db-link-box {

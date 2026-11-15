@@ -13,7 +13,8 @@ import {
   todayInMexico,
   type CustomerProfileRecord,
 } from '../domain/dashboard';
-import { ArrowRightIcon, BoltIcon, CheckIcon, CodiQrGraphic, CopyIcon, LinkIcon, PlusIcon, QrCodeIcon, ShareIcon } from './DashboardIcons';
+import { ChargeDeliveryPanels } from './ChargeDeliveryPanels';
+import { ArrowRightIcon, BoltIcon, CheckIcon, LinkIcon, PlusIcon, QrCodeIcon } from './DashboardIcons';
 
 interface QuickPaymentsViewProps {
   readonly profile: DashboardProfileDto;
@@ -49,7 +50,7 @@ export function QuickPaymentsView({
   const [concept, setConcept] = useState('Mensualidad');
   const [amount, setAmount] = useState('500');
   const [dueDate, setDueDate] = useState(todayInMexico());
-  const [method, setMethod] = useState<PaymentMethodDto>('PAYMENT_LINK');
+  const [method, setMethod] = useState<PaymentMethodDto>('CODI_QR');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdResult, setCreatedResult] = useState<CreatedChargeResult | null>(null);
@@ -85,23 +86,6 @@ export function QuickPaymentsView({
       setBusy(false);
     }
   }
-
-  async function handleCopyLink(link: string) {
-    try {
-      await navigator.clipboard.writeText(link);
-      onNotify('Enlace de pago copiado.');
-    } catch {
-      onNotify('Copia el enlace manualmente desde el recuadro.');
-    }
-  }
-
-  const shareText = createdResult
-    ? `Hola ${createdResult.charge.customerName}, te comparto tu cobro por ${formatMxnCents(createdResult.charge.amountCents)} (${createdResult.charge.concept}). ${createdResult.paymentLinkUrl ?? ''}`.trim()
-    : `Hola ${activeCustomer?.name ?? ''}, te comparto tu cobro por ${formatMxnCents(previewAmountCents)} (${concept}).`;
-
-  const whatsappHref = activePhone
-    ? `https://wa.me/52${activePhone}?text=${encodeURIComponent(shareText)}`
-    : undefined;
 
   return (
     <div className="db-stack">
@@ -186,7 +170,7 @@ export function QuickPaymentsView({
                 <input
                   id={`${baseId}-amount`}
                   type="number"
-                  min="1"
+                  min="0.01"
                   step="0.01"
                   inputMode="decimal"
                   value={amount}
@@ -263,7 +247,7 @@ export function QuickPaymentsView({
 
           <div className="db-preview-card">
             <div className="db-preview-meta">
-              <span>{profile.business.name}</span>
+              <span>{profile.business.name.trim() || profile.name}</span>
               <span>CLABE {clabeLabel}</span>
             </div>
             <strong>
@@ -283,55 +267,24 @@ export function QuickPaymentsView({
                     : 'Enlace de pago'}
               </span>
             </div>
-            {createdResult?.paymentLinkUrl && (
-              <div className="db-link-box" aria-label="Enlace de pago generado">
-                {createdResult.paymentLinkUrl}
-              </div>
-            )}
           </div>
 
-          {createdResult?.method === 'CODI_PUSH' && (
-            <div className="db-qr-panel">
-              <BoltIcon />
-              <strong>La solicitud se envió al teléfono del cliente</strong>
-              <span className="db-muted">
-                {createdResult.charge.customerName} recibe el cobro CoDi en su teléfono.
-              </span>
-            </div>
-          )}
-
-          {(createdResult?.method ?? method) === 'CODI_QR' && (
-            <div className="db-qr-panel">
-              <CodiQrGraphic />
-              <strong>Escanea desde la app de tu banco</strong>
-              <span className="db-muted">
-                Liquidación directa a tu CLABE {clabeLabel}.
-              </span>
-            </div>
-          )}
-
-          <div className="db-row-actions">
-            {createdResult?.paymentLinkUrl && (
-              <button
-                type="button"
-                className="db-btn-secondary"
-                onClick={() => void handleCopyLink(createdResult.paymentLinkUrl!)}
-              >
-                <CopyIcon />
-                <span>Copiar enlace</span>
+          <ChargeDeliveryPanels
+            createdResult={createdResult}
+            method={method}
+            clabeLabel={clabeLabel}
+            fallbackCustomerName={activeCustomer?.name ?? ''}
+            previewAmountCents={previewAmountCents}
+            concept={concept}
+            customerPhone={activePhone}
+            onNotify={onNotify}
+            extraActions={
+              <button type="button" className="db-btn-ghost" onClick={onGoToCharges}>
+                <span>Ver lista de pagos</span>
+                <ArrowRightIcon />
               </button>
-            )}
-            {whatsappHref && (
-              <a className="db-btn-accent" href={whatsappHref} target="_blank" rel="noreferrer">
-                <ShareIcon />
-                <span>Enviar por WhatsApp</span>
-              </a>
-            )}
-            <button type="button" className="db-btn-ghost" onClick={onGoToCharges}>
-              <span>Ver lista de pagos</span>
-              <ArrowRightIcon />
-            </button>
-          </div>
+            }
+          />
         </section>
       </div>
     </div>

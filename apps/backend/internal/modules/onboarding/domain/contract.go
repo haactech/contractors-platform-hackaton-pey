@@ -36,18 +36,12 @@ func Build(input Input) (User, map[string]string) {
 	return user, nil
 }
 
-// Allow repite las reglas del formulario sobre un usuario ya armado.
+// Allow repite las reglas del formulario completo sobre un usuario ya armado.
 func Allow(user User) map[string]string {
-	errors := map[string]string{}
-	checkText(errors, definitions.FieldName, user.Name)
-	checkText(errors, definitions.FieldProfession, user.Profession)
+	errors := AllowVendor(user)
 	checkText(errors, definitions.FieldClientName, user.Customer.Name)
 	checkText(errors, definitions.FieldClientPhone, user.Customer.Phone)
 	checkText(errors, definitions.FieldClientEmail, user.Customer.Email)
-	checkText(errors, definitions.FieldBusinessName, user.BusinessName)
-	checkText(errors, definitions.FieldBusinessActivity, user.BusinessActivity)
-	checkText(errors, definitions.FieldRFC, user.RFC)
-	checkText(errors, definitions.FieldCLABE, user.CLABE)
 	if user.Customer.Email != "" {
 		address, err := mail.ParseAddress(user.Customer.Email)
 		if err != nil || address.Address != user.Customer.Email {
@@ -57,6 +51,18 @@ func Allow(user User) map[string]string {
 	if user.Customer.Phone != "" && !phoneAllowed(user.Customer.Phone) {
 		errors[definitions.FieldClientPhone] = definitions.MessagePhone
 	}
+	return errors
+}
+
+// AllowVendor valida los campos propios del contratista, negocio y CLABE sin depender del primer cliente.
+func AllowVendor(user User) map[string]string {
+	errors := map[string]string{}
+	checkText(errors, definitions.FieldName, user.Name)
+	checkText(errors, definitions.FieldProfession, user.Profession)
+	checkText(errors, definitions.FieldCLABE, user.CLABE)
+	checkOptionalText(errors, definitions.FieldBusinessName, user.BusinessName)
+	checkOptionalText(errors, definitions.FieldBusinessActivity, user.BusinessActivity)
+	checkOptionalText(errors, definitions.FieldRFC, user.RFC)
 	if user.RFC != "" && !definitions.RFCPattern.MatchString(user.RFC) {
 		errors[definitions.FieldRFC] = definitions.MessageRFC
 	}
@@ -67,6 +73,42 @@ func Allow(user User) map[string]string {
 		errors[definitions.FieldTaxRegime] = definitions.MessageMaxRunes
 	}
 	return errors
+}
+
+// ApplyProfilePatch aplica una edición parcial al contratista, normaliza los valores y valida reglas de dominio.
+func ApplyProfilePatch(existing User, patch ProfilePatch) (User, map[string]string) {
+	updated := existing
+	updated.TaxRegime = CopyText(existing.TaxRegime)
+	if patch.Name != nil {
+		updated.Name = strings.TrimSpace(*patch.Name)
+	}
+	if patch.Profession != nil {
+		updated.Profession = strings.TrimSpace(*patch.Profession)
+	}
+	if patch.BusinessName != nil {
+		updated.BusinessName = strings.TrimSpace(*patch.BusinessName)
+	}
+	if patch.BusinessActivity != nil {
+		updated.BusinessActivity = strings.TrimSpace(*patch.BusinessActivity)
+	}
+	if patch.RFC != nil {
+		updated.RFC = strings.ToUpper(strings.TrimSpace(*patch.RFC))
+	}
+	if patch.TaxRegime != nil {
+		value := strings.TrimSpace(*patch.TaxRegime)
+		if value == "" {
+			updated.TaxRegime = nil
+		} else {
+			updated.TaxRegime = &value
+		}
+	}
+	if patch.CLABE != nil {
+		updated.CLABE = clabeSeparators.Replace(strings.TrimSpace(*patch.CLABE))
+	}
+	if fieldErrors := AllowVendor(updated); len(fieldErrors) > 0 {
+		return User{}, fieldErrors
+	}
+	return updated, nil
 }
 
 // TakenCLABE informa el error del formulario cuando esa CLABE ya fue registrada.
@@ -84,12 +126,19 @@ func NotRegisteredStatus() string {
 
 // EncodeRegistration arma el cuerpo que Pey espera para registrar la CLABE guardada.
 func EncodeRegistration(user User) ([]byte, bool) {
+	if user.CLABE == "" {
+		return nil, false
+	}
 	name, entity, ok := accountHolder(user)
 	if !ok {
 		return nil, false
 	}
+	alias := user.BusinessName
+	if alias == "" {
+		alias = user.Name
+	}
 	body, err := json.Marshal(map[string]string{
-		definitions.PeyAlias:  user.BusinessName,
+		definitions.PeyAlias:  alias,
 		definitions.PeyName:   name,
 		definitions.PeyCLABE:  user.CLABE,
 		definitions.PeyEntity: entity,
@@ -125,10 +174,13 @@ func AttachBankAccount(user User, account BankAccount) (User, bool) {
 
 func accountHolder(user User) (name, entity string, ok bool) {
 	switch utf8.RuneCountInString(user.RFC) {
-	case definitions.RFCLengthPerson:
-		return user.Name, definitions.PeyEntityPerson, true
 	case definitions.RFCLengthBusiness:
-		return user.BusinessName, definitions.PeyEntityBusiness, true
+		if user.BusinessName != "" {
+			return user.BusinessName, definitions.PeyEntityBusiness, true
+		}
+		return user.Name, definitions.PeyEntityBusiness, true
+	case definitions.RFCLengthPerson, 0:
+		return user.Name, definitions.PeyEntityPerson, true
 	default:
 		return "", "", false
 	}
@@ -201,7 +253,11 @@ func checkText(errors map[string]string, field, value string) {
 		errors[field] = definitions.MessageRequired
 		return
 	}
-	if utf8.RuneCountInString(value) > definitions.MaxRunes {
+	checkOptionalText(errors, field, value)
+}
+
+func checkOptionalText(errors map[string]string, field, value string) {
+	if value != "" && utf8.RuneCountInString(value) > definitions.MaxRunes {
 		errors[field] = definitions.MessageMaxRunes
 	}
 }

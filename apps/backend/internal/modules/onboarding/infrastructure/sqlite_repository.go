@@ -64,11 +64,19 @@ func newID() (string, error) {
 
 // HasCLABE indica si otra cuenta ya guardó esa CLABE.
 func (repository *SQLiteRepository) HasCLABE(clabe string) (bool, error) {
+	return repository.HasOtherCLABE(clabe, "")
+}
+
+// HasOtherCLABE indica si otro contratista distinto a excludeID ya guardó esa CLABE.
+func (repository *SQLiteRepository) HasOtherCLABE(clabe, excludeID string) (bool, error) {
 	if clabe == "" {
 		return false, nil
 	}
 	var found int
-	err := repository.vendors.QueryRow(`SELECT 1 FROM bank_accounts WHERE clabe = ? LIMIT 1`, clabe).Scan(&found)
+	err := repository.vendors.QueryRow(
+		`SELECT 1 FROM bank_accounts WHERE clabe = ? AND vendor_id <> ? LIMIT 1`,
+		clabe, excludeID,
+	).Scan(&found)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -125,6 +133,66 @@ func (repository *SQLiteRepository) Save(user domain.User) (domain.User, error) 
 	return cloneUser(user), nil
 }
 
+// Update actualiza los campos editables de perfil, negocio y cuenta de depósito de un contratista existente.
+func (repository *SQLiteRepository) Update(user domain.User) (domain.User, error) {
+	if fieldErrors := domain.AllowVendor(user); len(fieldErrors) > 0 {
+		return domain.User{}, errRejected
+	}
+	taken, err := repository.HasOtherCLABE(user.CLABE, user.ID)
+	if err != nil {
+		return domain.User{}, err
+	}
+	if taken {
+		return domain.User{}, domain.ErrCLABETaken
+	}
+	transaction, err := repository.vendors.Begin()
+	if err != nil {
+		return domain.User{}, err
+	}
+	result, err := transaction.Exec(
+		`UPDATE vendors SET name = ?, profession = ? WHERE id = ?`,
+		user.Name, user.Profession, user.ID,
+	)
+	if err != nil {
+		_ = transaction.Rollback()
+		return domain.User{}, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		_ = transaction.Rollback()
+		return domain.User{}, err
+	}
+	if rows == 0 {
+		_ = transaction.Rollback()
+		return domain.User{}, domain.ErrNotFound
+	}
+	if _, err := transaction.Exec(
+		`UPDATE businesses SET business_name = ?, business_activity = ?, rfc = ?, tax_regime = ? WHERE vendor_id = ?`,
+		user.BusinessName, user.BusinessActivity, user.RFC, user.TaxRegime, user.ID,
+	); err != nil {
+		_ = transaction.Rollback()
+		return domain.User{}, err
+	}
+	if _, err := transaction.Exec(
+		`UPDATE bank_accounts SET clabe = ?, codi_status = ?, bank_account_id = ? WHERE vendor_id = ?`,
+		user.CLABE, user.CodiStatus, user.BankAccountID, user.ID,
+	); err != nil {
+		_ = transaction.Rollback()
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			return domain.User{}, domain.ErrCLABETaken
+		}
+		return domain.User{}, err
+	}
+	if err := transaction.Commit(); err != nil {
+		return domain.User{}, err
+	}
+	updated, found := repository.Find(user.ID)
+	if !found {
+		return domain.User{}, domain.ErrNotFound
+	}
+	return updated, nil
+}
+
 // Remove borra el alta que no pudo guardar su primer cliente.
 func (repository *SQLiteRepository) Remove(id string) error {
 	transaction, err := repository.vendors.Begin()
@@ -146,7 +214,7 @@ func (repository *SQLiteRepository) Remove(id string) error {
 
 // RecordBankAccount anota el id y el estado de Pey solo en la cuenta del vendedor.
 func (repository *SQLiteRepository) RecordBankAccount(user domain.User) (domain.User, error) {
-	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
+	if fieldErrors := domain.AllowVendor(user); len(fieldErrors) > 0 {
 		return domain.User{}, errRejected
 	}
 	result, err := repository.vendors.Exec(`UPDATE bank_accounts SET bank_account_id = ?, codi_status = ? WHERE vendor_id = ?`,
@@ -170,6 +238,18 @@ func (repository *SQLiteRepository) RecordBankAccount(user domain.User) (domain.
 
 // Find arma el vendedor desde su persona, su negocio y su cuenta. El cliente lo adjunta la lectura.
 func (repository *SQLiteRepository) Find(id string) (domain.User, bool) {
+	return repository.findOne(`vendors.id = ?`, id)
+}
+
+// FindByCLABE busca un usuario por CLABE normalizada.
+func (repository *SQLiteRepository) FindByCLABE(clabe string) (domain.User, bool) {
+	if clabe == "" {
+		return domain.User{}, false
+	}
+	return repository.findOne(`bank_accounts.clabe = ? LIMIT 1`, clabe)
+}
+
+func (repository *SQLiteRepository) findOne(whereClause, arg string) (domain.User, bool) {
 	var user domain.User
 	var taxRegime sql.NullString
 	err := repository.vendors.QueryRow(`SELECT vendors.id, vendors.name, vendors.profession,
@@ -178,12 +258,12 @@ func (repository *SQLiteRepository) Find(id string) (domain.User, bool) {
 		FROM vendors
 		JOIN businesses ON businesses.vendor_id = vendors.id
 		JOIN bank_accounts ON bank_accounts.vendor_id = vendors.id
-		WHERE vendors.id = ?`, id).Scan(
+		WHERE `+whereClause, arg).Scan(
 		&user.ID, &user.Name, &user.Profession, &user.BusinessName, &user.BusinessActivity, &user.RFC, &taxRegime,
 		&user.CLABE, &user.CodiStatus, &user.BankAccountID)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			log.Printf("onboarding: find vendor %s: %v", id, err)
+			log.Printf("onboarding: find vendor %s: %v", arg, err)
 		}
 		return domain.User{}, false
 	}

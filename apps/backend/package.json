@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "go run ./cmd/api",
+    "dev": "AUTH_MODE=${AUTH_MODE:-demo} go run ./cmd/api",
     "build": "go build -o dist/api ./cmd/api",
     "start": "./dist/api",
     "typecheck": "go vet ./...",

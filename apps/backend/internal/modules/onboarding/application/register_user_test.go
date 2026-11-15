@@ -20,7 +20,23 @@ func (repository *memoryUsers) Find(id string) (domain.User, bool) {
 	return user, found
 }
 
+func (repository *memoryUsers) FindByCLABE(clabe string) (domain.User, bool) {
+	for _, user := range repository.users {
+		if user.CLABE == clabe {
+			return user, true
+		}
+	}
+	return domain.User{}, false
+}
+
+func (repository *memoryUsers) Update(user domain.User) (domain.User, error) {
+	repository.users[user.ID] = user
+	return user, nil
+}
+
 func (repository *memoryUsers) HasCLABE(string) (bool, error) { return false, nil }
+
+func (repository *memoryUsers) HasOtherCLABE(string, string) (bool, error) { return false, nil }
 
 func (repository *memoryUsers) RecordBankAccount(user domain.User) (domain.User, error) {
 	return user, nil
@@ -59,7 +75,7 @@ func TestClientStoreFailureRemovesTheVendor(t *testing.T) {
 	if len(fieldErrors) > 0 {
 		t.Fatal(fieldErrors)
 	}
-	_, _, err := NewRegisterUser(repository, banks, failingClients{}).Create(context.Background(), domain.Input{
+	_, _, err := NewRegisterUser(repository, banks, nil, failingClients{}).Create(context.Background(), domain.Input{
 		Name: user.Name, Profession: user.Profession, Client: domain.Client{Name: user.Customer.Name, Phone: user.Customer.Phone, Email: user.Customer.Email},
 		BusinessName: user.BusinessName, BusinessActivity: user.BusinessActivity, RFC: user.RFC, CLABE: user.CLABE,
 	})

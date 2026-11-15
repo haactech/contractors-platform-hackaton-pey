@@ -6,7 +6,7 @@ Contrato formal: `docs/openapi.json` (tag `dashboard`). DTO: `packages/contracts
 
 ## Endpoints
 
-Base: `/api/contractors/{contractorId}/dashboard`.
+Base: `/api/contractors/{contractorId}/dashboard`. Todas las rutas implementadas requieren sesión autenticada (`cookieAuth` `praxis_session`) dueña del `contractorId` (`401` sin sesión, `403` `email_unverified` si aplica, `404` si el `contractorId` no pertenece a la cuenta).
 
 ### Ver
 

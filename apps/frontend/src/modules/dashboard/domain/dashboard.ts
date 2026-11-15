@@ -52,14 +52,14 @@ export const QUICK_PAYMENT_METHODS: readonly {
   readonly description: string;
 }[] = [
   {
-    id: 'PAYMENT_LINK',
-    title: 'Enlace de pago',
-    description: 'Envía por WhatsApp, correo o copia la liga directa.',
-  },
-  {
     id: 'CODI_QR',
     title: 'QR CoDi',
     description: 'Cobra al instante en persona sin comisiones.',
+  },
+  {
+    id: 'PAYMENT_LINK',
+    title: 'Enlace de pago',
+    description: 'Envía por WhatsApp, correo o copia la liga directa.',
   },
   {
     id: 'CODI_PUSH',

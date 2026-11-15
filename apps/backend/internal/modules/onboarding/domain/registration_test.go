@@ -29,6 +29,24 @@ func TestEncodeRegistrationChoosesEntityFromRFC(t *testing.T) {
 	if payload["entity"] != "PERSON" || payload["name"] != person.Name || payload["alias"] != person.BusinessName {
 		t.Fatalf("person body: %s", body)
 	}
+	noClabe := person
+	noClabe.CLABE = ""
+	if _, ok := EncodeRegistration(noClabe); ok {
+		t.Fatal("expected empty CLABE to skip pey registration")
+	}
+	noBusiness := person
+	noBusiness.RFC = ""
+	noBusiness.BusinessName = ""
+	body, ok = EncodeRegistration(noBusiness)
+	if !ok {
+		t.Fatal("expected registration without RFC/business name to register as PERSON with CLABE")
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["entity"] != "PERSON" || payload["name"] != noBusiness.Name || payload["alias"] != noBusiness.Name || payload["clabe"] != noBusiness.CLABE {
+		t.Fatalf("no-business body: %s", body)
+	}
 }
 
 func TestDecodeBankAccountAcceptsPeyStatus(t *testing.T) {

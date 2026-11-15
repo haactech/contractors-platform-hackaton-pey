@@ -290,6 +290,8 @@ export interface MockDashboard extends DashboardGateway, PaymentsGateway, Custom
   reset(contractorId?: string): void;
   /** Replaces the business data with the five sample charges. */
   loadDemoData(contractorId?: string): void;
+  /** Seeds sample charges once when the workspace has no stored state yet. */
+  preloadDemoData(contractorId?: string): void;
 }
 
 export function createMockDashboard(): MockDashboard {
@@ -678,6 +680,18 @@ export function createMockDashboard(): MockDashboard {
     },
 
     loadDemoData(contractorId = MOCK_CONTRACTOR_ID) {
+      saveState(contractorId, seed(today()));
+    },
+
+    preloadDemoData(contractorId = MOCK_CONTRACTOR_ID) {
+      if (typeof window !== 'undefined') {
+        try {
+          if (window.localStorage.getItem(`${STORAGE_PREFIX}${contractorId}`) !== null) return;
+        } catch {
+          /* Ignore storage errors in private mode. */
+        }
+      }
+      if (states.has(contractorId)) return;
       saveState(contractorId, seed(today()));
     },
   };

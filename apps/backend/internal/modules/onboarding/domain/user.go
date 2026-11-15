@@ -1,6 +1,21 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrAlreadyOnboarded avisa que la cuenta ya tiene un registro de contratista.
+var ErrAlreadyOnboarded = errors.New("cuenta con alta")
+
+// ErrNotFound avisa que el registro de contratista no existe.
+var ErrNotFound = errors.New("registro no encontrado")
+
+// Owners ata cada alta a quien la pidió.
+type Owners interface {
+	Claimable(ctx context.Context) error
+	Claim(ctx context.Context, contractorID string) error
+}
 
 // Customer es la primera persona a la que el usuario puede cobrar.
 type Customer struct {
@@ -38,8 +53,11 @@ type BankRegistrar interface {
 // Repository guarda y recupera usuarios. No escribe clientes.
 type Repository interface {
 	Save(User) (User, error)
+	Update(User) (User, error)
 	Find(string) (User, bool)
+	FindByCLABE(string) (User, bool)
 	HasCLABE(string) (bool, error)
+	HasOtherCLABE(clabe, excludeID string) (bool, error)
 	RecordBankAccount(User) (User, error)
 	Remove(id string) error
 }

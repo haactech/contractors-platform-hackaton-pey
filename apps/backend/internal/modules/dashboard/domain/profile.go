@@ -41,9 +41,11 @@ const (
 type Field string
 
 const (
-	FieldTaxRegime Field = "taxRegime"
-	// FieldClabe is pending only for records created before CLABE was required.
-	FieldClabe Field = "clabe"
+	FieldBusinessName     Field = "businessName"
+	FieldBusinessActivity Field = "businessActivity"
+	FieldRFC              Field = "rfc"
+	FieldTaxRegime        Field = "taxRegime"
+	FieldClabe            Field = "clabe"
 )
 
 // ClabeVisibleDigits is how many trailing CLABE digits the dashboard shows.
@@ -128,6 +130,15 @@ func NewProfile(contractor Contractor) Profile {
 
 func pendingFields(contractor Contractor) []Field {
 	pending := []Field{}
+	if contractor.BusinessName == "" {
+		pending = append(pending, FieldBusinessName)
+	}
+	if contractor.BusinessActivity == "" {
+		pending = append(pending, FieldBusinessActivity)
+	}
+	if contractor.RFC == "" {
+		pending = append(pending, FieldRFC)
+	}
 	if contractor.TaxRegime == nil {
 		pending = append(pending, FieldTaxRegime)
 	}

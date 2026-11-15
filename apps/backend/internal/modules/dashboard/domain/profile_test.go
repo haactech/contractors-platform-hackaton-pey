@@ -22,12 +22,19 @@ func TestNewProfileTaxpayerType(t *testing.T) {
 
 func TestNewProfileOnboardingStatus(t *testing.T) {
 	regime := "General"
-	complete := NewProfile(Contractor{TaxRegime: &regime, CLABE: "002010077777777771"}).Onboarding
+	complete := NewProfile(Contractor{
+		BusinessName:     "Servicios Ana",
+		BusinessActivity: "Electricidad",
+		RFC:              "AAAA010101AAA",
+		TaxRegime:        &regime,
+		CLABE:            "002010077777777771",
+	}).Onboarding
 	if complete.Status != OnboardingStatusComplete || len(complete.PendingFields) != 0 || complete.PendingFields == nil {
 		t.Fatalf("complete: %+v", complete)
 	}
 	incomplete := NewProfile(Contractor{}).Onboarding
-	if incomplete.Status != OnboardingStatusIncomplete || !slices.Equal(incomplete.PendingFields, []Field{FieldTaxRegime, FieldClabe}) {
+	want := []Field{FieldBusinessName, FieldBusinessActivity, FieldRFC, FieldTaxRegime, FieldClabe}
+	if incomplete.Status != OnboardingStatusIncomplete || !slices.Equal(incomplete.PendingFields, want) {
 		t.Fatalf("incomplete: %+v", incomplete)
 	}
 }

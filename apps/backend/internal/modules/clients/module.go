@@ -4,6 +4,7 @@ import (
 	"contractors-platform/backend/internal/modules/clients/application"
 	"contractors-platform/backend/internal/modules/clients/domain"
 	"contractors-platform/backend/internal/modules/clients/presentation"
+	"contractors-platform/backend/internal/platform/access"
 	"net/http"
 )
 
@@ -45,13 +46,13 @@ var ErrVendorNotFound = domain.ErrVendorNotFound
 type facade struct{ service *application.Service }
 
 // Register publica el directorio y devuelve la fachada que onboarding y payments usan.
-func Register(mux *http.ServeMux, repository Repository, vendors Vendors) Directory {
+func Register(mux *http.ServeMux, repository Repository, vendors Vendors, guard access.Guard) Directory {
 	service := application.NewService(repository, vendors)
 	handler := presentation.New(service)
-	mux.HandleFunc("GET /api/contractors/{contractorId}/clients", handler.List)
-	mux.HandleFunc("POST /api/contractors/{contractorId}/clients", handler.Create)
-	mux.HandleFunc("GET /api/contractors/{contractorId}/clients/{clientId}", handler.Find)
-	mux.HandleFunc("PATCH /api/contractors/{contractorId}/clients/{clientId}", handler.Update)
+	mux.HandleFunc("GET /api/contractors/{contractorId}/clients", guard.Contractor("contractorId", handler.List))
+	mux.HandleFunc("POST /api/contractors/{contractorId}/clients", guard.Contractor("contractorId", handler.Create))
+	mux.HandleFunc("GET /api/contractors/{contractorId}/clients/{clientId}", guard.Contractor("contractorId", handler.Find))
+	mux.HandleFunc("PATCH /api/contractors/{contractorId}/clients/{clientId}", guard.Contractor("contractorId", handler.Update))
 	return facade{service: service}
 }
 

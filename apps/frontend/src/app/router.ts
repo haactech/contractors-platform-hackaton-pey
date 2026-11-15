@@ -1,23 +1,36 @@
 import { useEffect, useState } from 'react';
 
-/* Minimal History API router: two routes, no dependency. nginx and Vite
- * already fall back to index.html for unknown paths. */
+/* Minimal History API router: no external dependency. nginx and Vite already
+ * fall back to index.html for unknown paths. */
 export const ROUTES = {
   root: '/',
+  login: '/login',
+  signup: '/signup',
+  recoverPin: '/recover-pin',
+  verifyEmail: '/verify-email',
   onboarding: '/onboarding',
   dashboardPrefix: '/dashboard/',
 } as const;
 
-export const dashboardPath = (contractorId: string) => `${ROUTES.dashboardPrefix}${encodeURIComponent(contractorId)}`;
+export const dashboardPath = (contractorId: string) =>
+  `${ROUTES.dashboardPrefix}${encodeURIComponent(contractorId)}`;
 
 export type Route =
   | { readonly name: 'root' }
+  | { readonly name: 'login' }
+  | { readonly name: 'signup' }
+  | { readonly name: 'recoverPin' }
+  | { readonly name: 'verifyEmail' }
   | { readonly name: 'onboarding' }
   | { readonly name: 'dashboard'; readonly contractorId: string }
   | { readonly name: 'notFound' };
 
 export function matchRoute(pathname: string): Route {
   if (pathname === ROUTES.root) return { name: 'root' };
+  if (pathname === ROUTES.login) return { name: 'login' };
+  if (pathname === ROUTES.signup) return { name: 'signup' };
+  if (pathname === ROUTES.recoverPin) return { name: 'recoverPin' };
+  if (pathname === ROUTES.verifyEmail) return { name: 'verifyEmail' };
   if (pathname === ROUTES.onboarding) return { name: 'onboarding' };
   if (pathname.startsWith(ROUTES.dashboardPrefix)) {
     const contractorId = decodeURIComponent(pathname.slice(ROUTES.dashboardPrefix.length));

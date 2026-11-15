@@ -33,6 +33,9 @@ npm run deploy:dry-run
 
 El backend guarda los datos en SQLite (`DATABASE_PATH=/data/app.db`, definido en `apps/backend/Dockerfile`) sobre el disco del contenedor. Los registros desaparecen cuando el contenedor se suspende (15 minutos sin tráfico), reinicia o se redespliega: sirve para demos y pruebas e2e, no como almacenamiento persistente. Para persistir, reemplazar el repositorio por D1 u otra base externa.
 
+> [!WARNING]
+> El `Dockerfile` del backend define `AUTH_MODE=demo` para facilitar demos de la hackatón (permite cuenta demo, omite verificación obligatoria de correo y autoriza restablecer PIN sin código). **No usar `AUTH_MODE=demo` con datos reales**; en un despliegue productivo real cambiar a `AUTH_MODE=strict` y configurar correo `SMTP_HOST`.
+
 ## Referencias
 
 - [Workers y GitHub Actions](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/)

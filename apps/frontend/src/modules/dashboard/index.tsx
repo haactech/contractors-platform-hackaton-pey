@@ -1,3 +1,4 @@
+import type { UpdateOnboardingProfileRequest } from '@platform/contracts';
 import type { DashboardGateway, PaymentsGateway } from './application/dashboard-gateway';
 import { httpCustomersDirectory } from './infrastructure/http-clients-gateway';
 import { httpDashboardGateway } from './infrastructure/http-dashboard-gateway';
@@ -16,12 +17,23 @@ const payments: PaymentsGateway = { ...mock, createCharge: httpPaymentsGateway.c
 
 interface DashboardWorkspaceProps {
   readonly contractorId: string;
-  /** Called when the backend does not know the contractor (404). */
+  readonly preloadDemo?: boolean;
+  /** Called when the backend does not know the contractor or rejects the session (401/403/404). */
   readonly onNotFound: () => void;
   readonly onSignOut: () => void;
+  readonly onUpdateProfile?: (patch: UpdateOnboardingProfileRequest) => Promise<void>;
 }
 
-export function DashboardWorkspace({ contractorId, onNotFound, onSignOut }: DashboardWorkspaceProps) {
+export function DashboardWorkspace({
+  contractorId,
+  preloadDemo = false,
+  onNotFound,
+  onSignOut,
+  onUpdateProfile,
+}: DashboardWorkspaceProps) {
+  if (preloadDemo) {
+    mock.preloadDemoData(contractorId);
+  }
   return (
     <Workspace
       gateway={gateway}
@@ -31,6 +43,7 @@ export function DashboardWorkspace({ contractorId, onNotFound, onSignOut }: Dash
       contractorId={contractorId}
       onNotFound={onNotFound}
       onSignOut={onSignOut}
+      onUpdateProfile={onUpdateProfile}
     />
   );
 }

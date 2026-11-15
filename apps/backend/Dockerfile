@@ -14,7 +14,7 @@ COPY --from=build /out/api /api
 COPY --from=build --chown=nonroot:nonroot /out/data /data
 # SQLite lives on the container disk: it is reset when the container sleeps,
 # restarts or is redeployed. Good enough for demos and e2e tests.
-ENV HOST=0.0.0.0 PORT=8080 DATABASE_PATH=/data/app.db CLIENTS_DATABASE_PATH=/data/clients.db PAYMENTS_DATABASE_PATH=/data/payments.db
+ENV HOST=0.0.0.0 PORT=8080 DATABASE_PATH=/data/app.db CLIENTS_DATABASE_PATH=/data/clients.db PAYMENTS_DATABASE_PATH=/data/payments.db AUTH_MODE=demo
 EXPOSE 8080
 USER nonroot:nonroot
 ENTRYPOINT ["/api"]

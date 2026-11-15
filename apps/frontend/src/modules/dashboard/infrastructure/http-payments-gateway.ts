@@ -66,6 +66,7 @@ export const httpPaymentsGateway: Pick<PaymentsGateway, 'createCharge'> = {
       method: intent.method,
       ...(intent.paymentLinkUrl ? { paymentLinkUrl: intent.paymentLinkUrl } : {}),
       ...(intent.codiQrString ? { codiQrString: intent.codiQrString } : {}),
+      ...(intent.codiQrImage ? { codiQrImage: intent.codiQrImage } : {}),
     };
   },
 };

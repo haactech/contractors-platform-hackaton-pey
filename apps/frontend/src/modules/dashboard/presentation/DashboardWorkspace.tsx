@@ -6,6 +6,7 @@ import type {
   DashboardProfileDto,
   DashboardSummaryDto,
   ManualPaymentMethod,
+  UpdateOnboardingProfileRequest,
 } from '@platform/contracts';
 import {
   DashboardApiError,
@@ -45,6 +46,7 @@ interface DashboardWorkspaceProps {
   readonly demo?: DemoControls;
   readonly onNotFound?: () => void;
   readonly onSignOut?: () => void;
+  readonly onUpdateProfile?: (patch: UpdateOnboardingProfileRequest) => Promise<void>;
 }
 
 const NAV_TABS: readonly { readonly id: DashboardScreen; readonly label: string }[] = [
@@ -62,6 +64,7 @@ export function DashboardWorkspace({
   demo,
   onNotFound,
   onSignOut,
+  onUpdateProfile,
 }: DashboardWorkspaceProps) {
   const [screen, setScreen] = useState<DashboardScreen>('dashboard');
   const [filter, setFilter] = useState<ChargeFilter>('all');
@@ -128,7 +131,10 @@ export function DashboardWorkspace({
 
     loadWorkspace().catch((error: unknown) => {
       if (signal.aborted) return;
-      if (error instanceof DashboardApiError && error.status === 404) {
+      if (
+        error instanceof DashboardApiError &&
+        (error.status === 401 || error.status === 403 || error.status === 404)
+      ) {
         onNotFound?.();
         return;
       }
@@ -289,6 +295,7 @@ export function DashboardWorkspace({
   }
 
   const clabeLabel = profile.business.clabeLast4 ? `•••• ${profile.business.clabeLast4}` : 'CLABE pendiente';
+  const displayBrandName = profile.business.name.trim() || profile.name;
   const filterCounts: Record<ChargeFilter, number> = {
     all: allCharges.length,
     pending: allCharges.filter((charge) => charge.status === 'pending').length,
@@ -306,17 +313,17 @@ export function DashboardWorkspace({
 
   return (
     <section className="db-shell" aria-labelledby="db-business-title">
-      <h1 className="db-sr-only">Panel de cobros — {profile.business.name}</h1>
+      <h1 className="db-sr-only">Panel de cobros — {displayBrandName}</h1>
 
       <header className="db-header">
         <div className="db-brand">
           <div className="db-avatar" aria-hidden="true">
-            {profile.business.name.charAt(0).toUpperCase()}
+            {displayBrandName.charAt(0).toUpperCase()}
           </div>
           <div className="db-brand-copy">
             <div className="db-brand-title-row">
               <strong id="db-business-title" className="db-brand-name">
-                {profile.business.name}
+                {displayBrandName}
               </strong>
               <span className="db-clabe-pill">{clabeLabel}</span>
             </div>
@@ -379,6 +386,7 @@ export function DashboardWorkspace({
             clabeLabel={clabeLabel}
             onCreateCharge={handleCreateCharge}
             onRegisterCustomer={() => setScreen('clients')}
+            onNotify={notify}
             onCreated={(result) => {
               // Show the new charge as the first row of the payments table.
               setFilter('all');
@@ -457,6 +465,15 @@ export function DashboardWorkspace({
             profile={profile}
             clabeLabel={clabeLabel}
             demo={demo}
+            onUpdateProfile={
+              onUpdateProfile
+                ? async (patch) => {
+                    await onUpdateProfile(patch);
+                    notify('Perfil actualizado correctamente.');
+                    reload();
+                  }
+                : undefined
+            }
             onSimulatePayment={() => {
               const chargeId = demo?.simulateProviderPayment(contractorId);
               notify(chargeId ? `Webhook CoDi simulado: ${chargeId} marcado como pagado.` : 'No hay cobros pendientes por simular.');

@@ -67,7 +67,7 @@ const (
 	PhoneMinDigits        = 7
 	PhoneMaxDigits        = 15
 	PushPhoneDigits       = 10
-	QRExpirationSeconds   = 86400
+	QRExpirationSeconds   = 360
 	PushExpirationSeconds = 360
 	PushMaxCents          = 100_000_000
 )

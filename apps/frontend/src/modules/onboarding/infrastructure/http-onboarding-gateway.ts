@@ -1,12 +1,17 @@
-import type { ApiErrorResponse, CreateOnboardingRequest, OnboardingDto } from '@platform/contracts';
+import type {
+  ApiErrorResponse,
+  CreateOnboardingRequest,
+  OnboardingDto,
+  UpdateOnboardingProfileRequest,
+} from '@platform/contracts';
 import { OnboardingError, type OnboardingGateway } from '../application/onboarding-gateway';
 
 async function parseErrorResponse(response: Response, fallbackMessage: string): Promise<OnboardingError> {
   try {
     const error: ApiErrorResponse = await response.json();
-    return new OnboardingError(error.message, error.errors);
+    return new OnboardingError(error.message, error.errors, response.status, error.code);
   } catch {
-    return new OnboardingError(fallbackMessage);
+    return new OnboardingError(fallbackMessage, {}, response.status);
   }
 }
 
@@ -20,6 +25,19 @@ export const httpOnboardingGateway: OnboardingGateway = {
     });
     if (!response.ok) {
       throw await parseErrorResponse(response, 'No fue posible guardar el registro. Inténtalo de nuevo.');
+    }
+    const data: OnboardingDto = await response.json();
+    return { ...data, client: { ...data.client } };
+  },
+
+  async update(id, input: UpdateOnboardingProfileRequest) {
+    const response = await fetch(`/api/onboarding/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(input),
+    });
+    if (!response.ok) {
+      throw await parseErrorResponse(response, 'No fue posible actualizar tu perfil. Inténtalo de nuevo.');
     }
     const data: OnboardingDto = await response.json();
     return { ...data, client: { ...data.client } };

@@ -8,6 +8,14 @@ section + section { margin-top: 1.75rem; }
 .text-right { text-align: right; }
 .text-center { text-align: center; }
 
+.app-onboarding-topbar { max-width: 780px; margin: 0 auto 1rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; }
+.app-onboarding-topbar h1 { margin: 0; font-size: 1.5rem; }
+.app-account-meta { margin: .2rem 0 0; font-size: .88rem; color: #475569; }
+.app-topbar-actions { display: flex; align-items: center; gap: .6rem; }
+.app-topbar-btn { background: #fff; color: #151d2d; border: 1.5px solid #64748b; font-size: .85rem; font-weight: 600; }
+.app-topbar-btn:hover { background: #f8fafc; border-color: #151d2d; }
+.app-topbar-link { background: transparent; color: #315eaf; font-size: .85rem; font-weight: 700; text-decoration: underline; }
+
 .onboarding-fields { border: 0; margin: 0 0 2rem; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .onboarding-fields legend { padding: 0 0 .9rem; font-weight: 600; font-size: 1.05rem; }
 .onboarding-section-description { display: block; margin-top: .2rem; font-weight: 400; font-size: .9rem; color: #64748b; }

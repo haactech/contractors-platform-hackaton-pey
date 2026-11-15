@@ -44,3 +44,22 @@ func TestUnavailablePeyDoesNotCallNetwork(t *testing.T) {
 		t.Fatal("expected unavailable pey")
 	}
 }
+
+func TestPeyClientLooksUpBankAccount(t *testing.T) {
+	var auth, method, path string
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		auth = request.Header.Get("Authorization")
+		method = request.Method
+		path = request.URL.Path
+		writer.Header().Set("Content-Type", "application/json")
+		_, _ = writer.Write([]byte(`{"id":"01BANK","codiStatus":"ACTIVE"}`))
+	}))
+	defer server.Close()
+	payload, err := NewPeyClient(server.URL, "secret").Lookup(context.Background(), "01BANK")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auth != "Bearer secret" || method != http.MethodGet || path != "/bank-account/01BANK" || !strings.Contains(string(payload), "ACTIVE") {
+		t.Fatalf("auth=%s method=%s path=%s payload=%s", auth, method, path, payload)
+	}
+}

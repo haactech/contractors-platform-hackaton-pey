@@ -3,6 +3,7 @@ package presentation
 import (
 	"contractors-platform/backend/internal/modules/payments/application"
 	"contractors-platform/backend/internal/modules/payments/domain"
+	"contractors-platform/backend/internal/platform/access"
 	"encoding/json"
 	"errors"
 	"io"
@@ -49,6 +50,12 @@ func (handler *Handler) Create(writer http.ResponseWriter, request *http.Request
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		writeJSON(writer, http.StatusBadRequest, map[string]string{"message": domain.OneObjectMessage()})
 		return
+	}
+	if principal, ok := access.PrincipalFrom(request.Context()); ok {
+		if principal.ContractorID == "" || principal.ContractorID != input.VendorID {
+			writeJSON(writer, http.StatusNotFound, map[string]string{"message": domain.VendorMissingMessage()})
+			return
+		}
 	}
 	view, validation, err := handler.create.Create(request.Context(), input)
 	if len(validation) > 0 {

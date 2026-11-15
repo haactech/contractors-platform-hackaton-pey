@@ -12,6 +12,7 @@ import {
   pesosToCents,
   todayInMexico,
 } from '../domain/dashboard';
+import { ChargeDeliveryPanels } from './ChargeDeliveryPanels';
 import { ArrowRightIcon, BoltIcon, CheckIcon, LinkIcon, PlusIcon, QrCodeIcon } from './DashboardIcons';
 
 /* Shown on "Inicio" while the business has no charges: welcome, then a guided
@@ -42,6 +43,7 @@ interface FirstChargeStepperProps {
   readonly onCreateCharge: (input: NewChargeInput) => Promise<CreatedChargeResult>;
   readonly onCreated: (result: CreatedChargeResult) => void;
   readonly onRegisterCustomer: () => void;
+  readonly onNotify: (message: string) => void;
 }
 
 export function FirstChargeStepper({
@@ -52,6 +54,7 @@ export function FirstChargeStepper({
   onCreateCharge,
   onCreated,
   onRegisterCustomer,
+  onNotify,
 }: FirstChargeStepperProps) {
   const baseId = useId();
   const [step, setStep] = useState<StepId>('welcome');
@@ -61,9 +64,10 @@ export function FirstChargeStepper({
   const [concept, setConcept] = useState<string>(QUICK_CONCEPTS[0]);
   const [amount, setAmount] = useState(DEFAULT_AMOUNT_PESOS);
   const [dueDate, setDueDate] = useState(addDays(todayInMexico(), DEFAULT_DUE_IN_DAYS));
-  const [method, setMethod] = useState<PaymentMethodDto>('PAYMENT_LINK');
+  const [method, setMethod] = useState<PaymentMethodDto>('CODI_QR');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [createdResult, setCreatedResult] = useState<CreatedChargeResult | null>(null);
 
   const stepIndex = STEPS.findIndex((item) => item.id === step);
   const customer = customers.find((row) => row.customerId === (customerId || firstCustomerId));
@@ -91,7 +95,7 @@ export function FirstChargeStepper({
     setErrors({});
     try {
       const result = await onCreateCharge({ customerId: customer.customerId, concept: concept.trim(), amountCents, dueDate, method });
-      onCreated(result);
+      setCreatedResult(result);
     } catch (error) {
       setErrors({ form: error instanceof Error ? error.message : 'No fue posible crear el cobro.' });
     } finally {
@@ -119,7 +123,7 @@ export function FirstChargeStepper({
           <span className="db-stepper-eyebrow">Tu cuenta está lista</span>
           <h2 id={`${baseId}-title`}>¡Hola, {profile.name}! 👋</h2>
           <p className="db-muted">
-            <strong>{profile.business.name}</strong> ya puede cobrar. Vamos a crear tu primer cobro en menos de un minuto.
+            <strong>{profile.business.name.trim() || profile.name}</strong> ya puede cobrar. Vamos a crear tu primer cobro en menos de un minuto.
           </p>
           <ul className="db-stepper-benefits">
             <li>Tu cliente paga con un enlace, un QR CoDi o un cobro directo a su teléfono.</li>
@@ -220,7 +224,7 @@ export function FirstChargeStepper({
                 <input
                   id={`${baseId}-amount`}
                   type="number"
-                  min="1"
+                  min="0.01"
                   step="0.01"
                   inputMode="decimal"
                   value={amount}
@@ -273,35 +277,80 @@ export function FirstChargeStepper({
 
       {step === 'confirm' && customer && amountCents !== null && (
         <div className="db-stack">
-          <h2 id={`${baseId}-title`}>Revisa y crea tu cobro</h2>
+          <div className="db-section-header">
+            <h2 id={`${baseId}-title`}>{createdResult ? 'Cobro listo para compartir' : 'Revisa y crea tu cobro'}</h2>
+            {createdResult && (
+              <span className="db-badge is-pending">
+                <CheckIcon />
+                <span>Pendiente de pago</span>
+              </span>
+            )}
+          </div>
           <div className="db-preview-card">
             <div className="db-preview-meta">
-              <span>{profile.business.name}</span>
+              <span>{profile.business.name.trim() || profile.name}</span>
               <span>CLABE {clabeLabel}</span>
             </div>
             <strong>
-              {concept.trim()} · {customer.name}
+              {(createdResult ? createdResult.charge.concept : concept.trim())} ·{' '}
+              {createdResult ? createdResult.charge.customerName : customer.name}
             </strong>
-            <div className="db-preview-amount">{formatMxnCents(amountCents)}</div>
+            <div className="db-preview-amount">
+              {formatMxnCents(createdResult ? createdResult.charge.amountCents : amountCents)}
+            </div>
             <div className="db-preview-meta">
-              <span>Vence {formatDate(dueDate)}</span>
+              <span>Vence {formatDate(createdResult ? createdResult.charge.dueDate : dueDate)}</span>
               <span>{methodInfo?.title ?? method}</span>
             </div>
           </div>
-          {errors.form && (
-            <p role="alert" className="db-error-banner">
-              {errors.form}
-            </p>
+
+          {createdResult ? (
+            <ChargeDeliveryPanels
+              createdResult={createdResult}
+              method={method}
+              clabeLabel={clabeLabel}
+              fallbackCustomerName={customer.name}
+              previewAmountCents={amountCents}
+              concept={concept.trim()}
+              customerPhone={customerPhones[customer.customerId]}
+              onNotify={onNotify}
+              extraActions={
+                <>
+                  <button
+                    type="button"
+                    className="db-btn-secondary"
+                    onClick={() => {
+                      setCreatedResult(null);
+                      goTo('charge');
+                    }}
+                  >
+                    Crear otro cobro
+                  </button>
+                  <button type="button" className="db-btn-ghost" onClick={() => onCreated(createdResult)}>
+                    <span>Ver lista de pagos</span>
+                    <ArrowRightIcon />
+                  </button>
+                </>
+              }
+            />
+          ) : (
+            <>
+              {errors.form && (
+                <p role="alert" className="db-error-banner">
+                  {errors.form}
+                </p>
+              )}
+              <div className="db-row-actions">
+                <button type="button" className="db-btn-secondary" disabled={busy} onClick={() => goTo('charge')}>
+                  Atrás
+                </button>
+                <button type="button" className="db-btn-accent" disabled={busy} onClick={() => void handleCreate()}>
+                  <CheckIcon />
+                  <span>{busy ? 'Creando cobro…' : 'Crear cobro'}</span>
+                </button>
+              </div>
+            </>
           )}
-          <div className="db-row-actions">
-            <button type="button" className="db-btn-secondary" disabled={busy} onClick={() => goTo('charge')}>
-              Atrás
-            </button>
-            <button type="button" className="db-btn-accent" disabled={busy} onClick={() => void handleCreate()}>
-              <CheckIcon />
-              <span>{busy ? 'Creando cobro…' : 'Crear cobro'}</span>
-            </button>
-          </div>
         </div>
       )}
     </section>

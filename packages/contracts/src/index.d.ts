@@ -20,15 +20,33 @@ export interface CreateOnboardingRequest {
   profession: string;
   client: ClientDto;
   taxRegime?: string;
-  businessName: string;
-  businessActivity: string;
-  rfc: string;
-  /** 18-digit CLABE where the business receives its payments. Spaces/hyphens allowed on input. */
+  businessName?: string;
+  businessActivity?: string;
+  rfc?: string;
+  /** 18-digit CLABE where the contractor receives payments. Spaces/hyphens allowed on input. */
   clabe: string;
 }
 
-export interface OnboardingDto extends CreateOnboardingRequest {
+export interface UpdateOnboardingProfileRequest {
+  name?: string;
+  profession?: string;
+  businessName?: string;
+  businessActivity?: string;
+  rfc?: string;
+  taxRegime?: string;
+  clabe?: string;
+}
+
+export interface OnboardingDto {
   id: string;
+  name: string;
+  profession: string;
+  client: ClientDto;
+  taxRegime?: string;
+  businessName: string;
+  businessActivity: string;
+  rfc: string;
+  clabe: string;
 }
 
 export type PaymentMethodDto = "PAYMENT_LINK" | "CODI_QR" | "CODI_PUSH";
@@ -105,10 +123,70 @@ export interface ClientBalanceDto {
   pendingCount: number;
 }
 
-export interface ApiErrorResponse {
+export type AuthErrorCode =
+  | 'unauthenticated'
+  | 'email_unverified'
+  | 'account_locked'
+  | 'demo_protected';
+
+export interface AccountDto {
+  id: string;
+  email: string;
+  phone: string;
+  contractorId: string | null;
+  emailVerified: boolean;
+  demo: boolean;
+}
+
+export interface SessionResponse {
+  account: AccountDto;
+}
+
+export interface DemoAccountInfoDto {
+  email: string;
+  phone: string;
+  pin: string;
+}
+
+export interface AuthConfigDto {
+  emailVerificationRequired: boolean;
+  pinResetRequiresCode: boolean;
+  demoAccount: DemoAccountInfoDto | null;
+}
+
+export interface SignUpRequest {
+  email: string;
+  phone: string;
+  pin: string;
+}
+
+export interface LogInRequest {
+  identifier: string;
+  pin: string;
+}
+
+export interface CodeIssuedResponse {
+  devCode?: string;
+}
+
+export interface ConfirmEmailRequest {
+  code: string;
+}
+
+export interface StartPinRecoveryRequest {
+  identifier: string;
+}
+
+export interface ConfirmPinRecoveryRequest {
+  identifier: string;
+  code?: string;
+  pin: string;
+}
+
+export interface ApiErrorResponse<Code extends string = DashboardErrorCode> {
   message: string;
   errors?: Record<string, string>;
-  code?: DashboardErrorCode;
+  code?: Code;
 }
 
 /* ---------- Dashboard: GET /api/contractors/{contractorId}/dashboard/* ----------
@@ -117,7 +195,7 @@ export interface ApiErrorResponse {
 
 export type TaxpayerType = 'individual' | 'company' | 'unknown';
 export type OnboardingStatus = 'complete' | 'incomplete';
-export type OnboardingField = 'taxRegime' | 'clabe';
+export type OnboardingField = 'businessName' | 'businessActivity' | 'rfc' | 'taxRegime' | 'clabe';
 /** codi/card come from pey; cash/transfer/other are recorded by the business. */
 export type PaymentMethod = 'codi' | 'card' | 'cash' | 'transfer' | 'other';
 export type ManualPaymentMethod = Extract<PaymentMethod, 'cash' | 'transfer' | 'other'>;

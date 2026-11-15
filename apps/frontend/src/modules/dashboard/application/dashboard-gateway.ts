@@ -61,6 +61,7 @@ export interface CreatedChargeResult {
   readonly method: PaymentMethodDto;
   readonly paymentLinkUrl?: string;
   readonly codiQrString?: string;
+  readonly codiQrImage?: string;
 }
 
 /** Error of a dashboard call. Branch on `code`, never on `message`. */
