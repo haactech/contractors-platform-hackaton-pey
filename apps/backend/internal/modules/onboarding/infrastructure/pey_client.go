@@ -26,9 +26,14 @@ func NewPeyClient(baseURL, key string) *PeyClient {
 	}
 }
 
-// Register envía el cuerpo ya armado y devuelve la respuesta de Pey.
+// Register envía el alta de la CLABE y devuelve la respuesta de Pey.
 func (client *PeyClient) Register(ctx context.Context, body []byte) ([]byte, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, client.baseURL+"/bank-account", bytes.NewReader(body))
+	return client.Collect(ctx, "/bank-account", body)
+}
+
+// Collect envía un cuerpo ya armado a una ruta de Pey y devuelve la respuesta.
+func (client *PeyClient) Collect(ctx context.Context, path string, body []byte) ([]byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, client.baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}

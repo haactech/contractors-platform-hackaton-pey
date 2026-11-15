@@ -34,6 +34,7 @@ import { FirstChargeStepper } from './FirstChargeStepper';
 import { PaymentsListView, type ChargeActionKind } from './PaymentsListView';
 import { ProfileView, type DemoControls } from './ProfileView';
 import { QuickPaymentsView } from './QuickPaymentsView';
+import { clientToProfile, clientToRow } from '../infrastructure/http-clients-gateway';
 import './dashboard.css';
 
 interface DashboardWorkspaceProps {
@@ -100,12 +101,11 @@ export function DashboardWorkspace({
 
     async function loadWorkspace() {
       const nextProfile = await gateway.profile(contractorId, signal);
-      customersDirectory.syncFirstCustomer(contractorId, nextProfile.firstCustomer);
-      const [nextSummary, everyCharge, filtered, nextCustomers] = await Promise.all([
+      const [nextSummary, everyCharge, filtered, nextClients] = await Promise.all([
         gateway.summary(contractorId, {}, signal),
         gateway.charges(contractorId, {}, signal),
         gateway.charges(contractorId, chargesQueryFor(filter, search), signal),
-        gateway.customers(contractorId, {}, signal),
+        customersDirectory.list(contractorId, signal),
       ]);
       if (signal.aborted) return;
 
@@ -113,12 +113,16 @@ export function DashboardWorkspace({
       setSummary(nextSummary);
       setAllCharges(everyCharge.charges);
       setCharges(filtered);
-      setCustomers(nextCustomers);
-      setCustomerDetails(customersDirectory.listDetails(contractorId));
+      setCustomers({
+        customers: nextClients.map(clientToRow),
+        counts: { all: nextClients.length, overdue: 0, pending: 0, upToDate: nextClients.length },
+        nextCursor: null,
+      });
+      setCustomerDetails(Object.fromEntries(nextClients.map((client) => [client.clientId, clientToProfile(client)])));
       setLoadError(null);
       setSelectedCustomerId((current) => {
-        if (current && nextCustomers.customers.some((row) => row.customerId === current)) return current;
-        return nextCustomers.customers[0]?.customerId ?? '';
+        if (current && nextClients.some((client) => client.clientId === current)) return current;
+        return nextClients[0]?.clientId ?? '';
       });
     }
 
@@ -227,15 +231,30 @@ export function DashboardWorkspace({
   }
 
   async function handleCreateCharge(input: NewChargeInput) {
-    const result = await payments.createCharge(contractorId, input);
-    notify(`Cobro generado: ${formatMxnCents(result.charge.amountCents)} para ${result.charge.customerName}.`);
+    const detail = customerDetails[input.customerId];
+    if (!detail?.name.trim()) {
+      throw new DashboardApiError('Este cliente no está registrado.', 422, undefined, {
+        clientName: 'Este cliente no está registrado.',
+      });
+    }
+    const result = await payments.createCharge(contractorId, {
+      ...input,
+      clientName: detail.name,
+      clientPhone: detail.phone,
+      clientEmail: detail.email,
+    });
+    notify(
+      result.method === 'CODI_PUSH'
+        ? `La solicitud de cobro se envió al teléfono ${detail.phone}.`
+        : `Cobro generado: ${formatMxnCents(result.charge.amountCents)} para ${result.charge.customerName}.`,
+    );
     reload();
     return result;
   }
 
   async function handleCreateCustomer(input: NewCustomerInput) {
     const created = await customersDirectory.createCustomer(contractorId, input);
-    setSelectedCustomerId(created.customerId);
+    setSelectedCustomerId(created.clientId);
     notify(`Cliente registrado: ${created.name}.`);
     reload();
     return created;

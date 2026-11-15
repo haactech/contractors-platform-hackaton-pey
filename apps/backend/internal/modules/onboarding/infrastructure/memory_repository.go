@@ -89,3 +89,11 @@ func (repository *MemoryRepository) Find(id string) (domain.User, bool) {
 	user, found := repository.records[id]
 	return cloneUser(user), found
 }
+
+// Remove borra el alta que no pudo guardar su primer cliente.
+func (repository *MemoryRepository) Remove(id string) error {
+	repository.mutex.Lock()
+	defer repository.mutex.Unlock()
+	delete(repository.records, id)
+	return nil
+}

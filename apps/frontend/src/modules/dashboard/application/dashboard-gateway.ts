@@ -1,7 +1,6 @@
 import type {
   CancelChargeRequest,
   ChargesQuery,
-  CustomerRowDto,
   CustomersQuery,
   DashboardChargeDto,
   DashboardChargesDto,
@@ -13,8 +12,9 @@ import type {
   PaymentMethodDto,
   PeriodQuery,
   UpdateDashboardChargeRequest,
+  VendorClientDto,
 } from '@platform/contracts';
-import type { CustomerProfileRecord, NewCustomerInput } from '../domain/dashboard';
+import type { NewCustomerInput } from '../domain/dashboard';
 
 /** Endpoints of the dashboard contract (/api/contractors/{contractorId}/dashboard/*). */
 export interface DashboardGateway {
@@ -27,13 +27,11 @@ export interface DashboardGateway {
   cancelCharge(contractorId: string, chargeId: string, body: CancelChargeRequest): Promise<DashboardChargeDto>;
 }
 
-/** Customer creation, business profile editing, and full directory lookup. */
+/** Customer creation, profile editing, and the clients API. */
 export interface CustomersDirectoryGateway {
-  createCustomer(contractorId: string, input: NewCustomerInput): Promise<CustomerRowDto>;
-  updateCustomer(contractorId: string, customerId: string, input: NewCustomerInput): Promise<CustomerRowDto>;
-  listDetails(contractorId: string): Record<string, CustomerProfileRecord>;
-  listPhones(contractorId: string): Record<string, string>;
-  syncFirstCustomer(contractorId: string, firstCustomer: { name: string; phone: string; email: string }): void;
+  list(contractorId: string, signal?: AbortSignal): Promise<VendorClientDto[]>;
+  createCustomer(contractorId: string, input: NewCustomerInput): Promise<VendorClientDto>;
+  updateCustomer(contractorId: string, customerId: string, input: NewCustomerInput): Promise<VendorClientDto>;
 }
 
 /**
@@ -52,6 +50,10 @@ export interface NewChargeInput {
   readonly amountCents: number;
   readonly dueDate: string;
   readonly method: PaymentMethodDto;
+  /** Name, phone and email of the client being charged. The browser customer id is not sent. */
+  readonly clientName?: string;
+  readonly clientPhone?: string;
+  readonly clientEmail?: string;
 }
 
 export interface CreatedChargeResult {

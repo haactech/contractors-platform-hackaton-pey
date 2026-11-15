@@ -141,6 +141,235 @@
         ]
       }
     },
+    "/api/payments": {
+      "post": {
+        "operationId": "createPayment",
+        "summary": "Create a payment link, CoDi QR, or direct CoDi charge for a vendor's client",
+        "description": "The screen sends the amount and the client. The service loads that vendor's stored bank id and does not accept a bank id or CLABE in the body. A payment link cannot name the vendor CLABE in Pey; the stored bank id still records which vendor the charge belongs to. A CoDi QR sends that bank id. A direct CoDi charge (CODI_PUSH) sends that bank id and the client's stored 10-digit phone to Pey POST /codi/pn.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePaymentIntentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Charge created and pending payment",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentIntent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed JSON or unknown fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Vendor was not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Request exceeds 1 MiB",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Field validation failed, the client is unknown, or the bank account cannot receive CoDi yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "The charge could not be stored, or the server has no HTTPS return URLs for a payment link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Pey did not return a usable charge. Nothing is stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "payments"
+        ]
+      }
+    },
+    "/api/contractors/{contractorId}/clients": {
+      "get": {
+        "operationId": "listVendorClients",
+        "summary": "List the clients of a vendor, oldest first",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Clients of that vendor. Balances are not included.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/VendorClient" }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Vendor was not found",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          }
+        },
+        "tags": ["clients"]
+      },
+      "post": {
+        "operationId": "createVendorClient",
+        "summary": "Create a client for a vendor",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1 }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VendorClientWrite" } } }
+        },
+        "responses": {
+          "201": {
+            "description": "Client created",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VendorClient" } } }
+          },
+          "400": {
+            "description": "Malformed JSON or unknown fields",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          },
+          "404": {
+            "description": "Vendor was not found",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          },
+          "413": {
+            "description": "Request exceeds 1 MiB",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          },
+          "415": {
+            "description": "Unsupported media type",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          },
+          "422": {
+            "description": "Field validation failed or the phone is already registered for this vendor",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          }
+        },
+        "tags": ["clients"]
+      }
+    },
+    "/api/contractors/{contractorId}/clients/{clientId}": {
+      "get": {
+        "operationId": "getVendorClient",
+        "summary": "Read one client of a vendor",
+        "parameters": [
+          { "name": "contractorId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+          { "name": "clientId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Client",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VendorClient" } } }
+          },
+          "404": {
+            "description": "Vendor or client was not found",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          }
+        },
+        "tags": ["clients"]
+      },
+      "patch": {
+        "operationId": "updateVendorClient",
+        "summary": "Replace the editable profile of a client",
+        "parameters": [
+          { "name": "contractorId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+          { "name": "clientId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VendorClientWrite" } } }
+        },
+        "responses": {
+          "200": {
+            "description": "Client updated",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/VendorClient" } } }
+          },
+          "400": {
+            "description": "Malformed JSON or unknown fields",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          },
+          "404": {
+            "description": "Vendor or client was not found",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          },
+          "422": {
+            "description": "Field validation failed or the phone is already registered for this vendor",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          }
+        },
+        "tags": ["clients"]
+      }
+    },
     "/api/contractors/{contractorId}/dashboard/profile": {
       "get": {
         "operationId": "getDashboardProfile",
@@ -1472,6 +1701,44 @@
   },
   "components": {
     "schemas": {
+      "VendorClient": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["clientId", "vendorId", "entityType", "name", "phone", "email", "createdAt", "updatedAt"],
+        "properties": {
+          "clientId": { "type": "string" },
+          "vendorId": { "type": "string" },
+          "entityType": { "type": "string", "enum": ["individual", "company"] },
+          "name": { "type": "string" },
+          "phone": { "type": "string" },
+          "email": { "type": "string", "format": "email" },
+          "legalName": { "type": "string" },
+          "tradeName": { "type": "string" },
+          "rfc": { "type": "string" },
+          "activity": { "type": "string" },
+          "taxRegime": { "type": "string" },
+          "fiscalAddress": { "type": "string" },
+          "createdAt": { "type": "string" },
+          "updatedAt": { "type": "string" }
+        }
+      },
+      "VendorClientWrite": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["entityType", "name", "phone", "email"],
+        "properties": {
+          "entityType": { "type": "string", "enum": ["individual", "company"] },
+          "name": { "type": "string", "minLength": 1, "maxLength": 255 },
+          "phone": { "type": "string", "description": "10 Mexican digits on dashboard writes." },
+          "email": { "type": "string", "format": "email" },
+          "legalName": { "type": "string", "maxLength": 255 },
+          "tradeName": { "type": "string", "maxLength": 255 },
+          "rfc": { "type": "string", "description": "12 or 13 characters when present." },
+          "activity": { "type": "string", "maxLength": 255 },
+          "taxRegime": { "type": "string", "maxLength": 255 },
+          "fiscalAddress": { "type": "string", "maxLength": 255 }
+        }
+      },
       "Client": {
         "type": "object",
         "additionalProperties": false,
@@ -1555,6 +1822,142 @@
             "examples": [
               "002 010 077777777771"
             ]
+          }
+        }
+      },
+      "CreatePaymentIntentRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "onboardingId",
+          "clientName",
+          "concept",
+          "amountCents",
+          "method"
+        ],
+        "properties": {
+          "onboardingId": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Vendor id from the dashboard route. The returned onboarding id."
+          },
+          "clientId": {
+            "type": "string",
+            "description": "When present, that stored client is loaded. The stored name, phone and email are kept. An unknown id is 422."
+          },
+          "clientName": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Visible client name. Without clientId it is matched to a stored client. The stored name is what gets saved."
+          },
+          "clientPhone": {
+            "type": "string",
+            "description": "Optional. Without clientId, 7–15 digits; a 10-digit Mexican number matches a stored +52 number. The stored phone is what gets saved and sent to Pey."
+          },
+          "clientEmail": {
+            "type": "string",
+            "description": "Optional. The stored client email is what gets saved."
+          },
+          "concept": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "amountCents": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Integer MXN cents. Only the Pey adapter divides by 100."
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD. The charge form collects it; readers can ignore it."
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "PAYMENT_LINK",
+              "CODI_QR",
+              "CODI_PUSH"
+            ]
+          }
+        }
+      },
+      "PaymentIntent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "onboardingId",
+          "clientName",
+          "concept",
+          "amountCents",
+          "method",
+          "status",
+          "reminderCount",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "onboardingId": {
+            "type": "string"
+          },
+          "clientName": {
+            "type": "string"
+          },
+          "clientPhone": {
+            "type": "string"
+          },
+          "clientEmail": {
+            "type": "string"
+          },
+          "concept": {
+            "type": "string"
+          },
+          "amountCents": {
+            "type": "integer"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "method": {
+            "type": "string",
+            "enum": [
+              "PAYMENT_LINK",
+              "CODI_QR",
+              "CODI_PUSH"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "PENDING_PAYMENT",
+              "SETTLED",
+              "UNDERPAID",
+              "EXPIRED",
+              "CANCELLED"
+            ]
+          },
+          "paymentLinkUrl": {
+            "type": "string"
+          },
+          "codiQrId": {
+            "type": "string"
+          },
+          "codiQrString": {
+            "type": "string"
+          },
+          "codiQrImage": {
+            "type": "string"
+          },
+          "reminderCount": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string"
           }
         }
       },

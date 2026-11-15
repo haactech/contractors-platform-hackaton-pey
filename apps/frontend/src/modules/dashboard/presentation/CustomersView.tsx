@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent } from 'react';
-import type { CustomerRowDto, DashboardCustomersDto, DashboardSummaryDto } from '@platform/contracts';
+import type { CustomerRowDto, DashboardCustomersDto, DashboardSummaryDto, VendorClientDto } from '@platform/contracts';
 import {
   CUSTOMER_ACTIVITIES,
   CUSTOMER_ENTITY_LABELS,
@@ -25,8 +25,8 @@ interface CustomersViewProps {
   readonly customersData: DashboardCustomersDto;
   readonly summary: DashboardSummaryDto;
   readonly customerDetails: Readonly<Record<string, CustomerProfileRecord>>;
-  readonly onCreateCustomer: (input: NewCustomerInput) => Promise<CustomerRowDto>;
-  readonly onUpdateCustomer: (customerId: string, input: NewCustomerInput) => Promise<CustomerRowDto>;
+  readonly onCreateCustomer: (input: NewCustomerInput) => Promise<VendorClientDto>;
+  readonly onUpdateCustomer: (customerId: string, input: NewCustomerInput) => Promise<VendorClientDto>;
   readonly onChargeCustomer: (customerId: string) => void;
   readonly onViewCustomerCharges: (customerName: string) => void;
 }
@@ -448,7 +448,7 @@ export function CustomersView({
                   <label htmlFor={`${baseId}-biz-address`}>Dirección fiscal o sucursal (opcional)</label>
                   <input
                     id={`${baseId}-biz-address`}
-                    maxLength={500}
+                    maxLength={255}
                     value={form.business?.fiscalAddress ?? ''}
                     placeholder="Ej. Av. Reforma 450, Col. Juárez, CDMX"
                     aria-invalid={Boolean(errors.fiscalAddress)}

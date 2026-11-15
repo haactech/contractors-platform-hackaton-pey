@@ -1,17 +1,18 @@
-import type { DashboardGateway } from './application/dashboard-gateway';
+import type { DashboardGateway, PaymentsGateway } from './application/dashboard-gateway';
+import { httpCustomersDirectory } from './infrastructure/http-clients-gateway';
 import { httpDashboardGateway } from './infrastructure/http-dashboard-gateway';
+import { httpPaymentsGateway } from './infrastructure/http-payments-gateway';
 import { createMockDashboard } from './infrastructure/mock-dashboard-gateway';
 import { DashboardWorkspace as Workspace } from './presentation/DashboardWorkspace';
 
 const mock = createMockDashboard();
 
 /**
- * The backend implements only GET /profile today. The rest of the dashboard,
- * customers directory, and payments contract runs on the persistent local
- * adapter synced with the onboarding `firstCustomer`; swap each method for
- * httpDashboardGateway as backend modules ship.
+ * Profile, clients, and charge creation talk to the API. The charge list,
+ * reminders, and summary stay on the local adapter until those routes exist.
  */
 const gateway: DashboardGateway = { ...mock, profile: httpDashboardGateway.profile };
+const payments: PaymentsGateway = { ...mock, createCharge: httpPaymentsGateway.createCharge };
 
 interface DashboardWorkspaceProps {
   readonly contractorId: string;
@@ -24,8 +25,8 @@ export function DashboardWorkspace({ contractorId, onNotFound, onSignOut }: Dash
   return (
     <Workspace
       gateway={gateway}
-      payments={mock}
-      customersDirectory={mock}
+      payments={payments}
+      customersDirectory={httpCustomersDirectory}
       demo={mock}
       contractorId={contractorId}
       onNotFound={onNotFound}

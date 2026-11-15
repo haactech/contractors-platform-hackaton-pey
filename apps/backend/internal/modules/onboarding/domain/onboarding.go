@@ -16,8 +16,8 @@ type Input struct {
 	BusinessName     string  `json:"businessName"`
 	BusinessActivity string  `json:"businessActivity"`
 	RFC              string  `json:"rfc"`
-	// CLABE is the 18-digit interbank account where the business receives its
-	// payments (pey deposits there; the platform never holds the money).
+	// CLABE es la cuenta interbancaria de 18 dígitos donde el negocio recibe sus pagos.
+	// Pey deposita ahí; la plataforma no custodia el dinero.
 	CLABE string `json:"clabe"`
 }
 

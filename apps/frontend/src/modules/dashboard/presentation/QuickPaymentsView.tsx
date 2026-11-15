@@ -13,7 +13,7 @@ import {
   todayInMexico,
   type CustomerProfileRecord,
 } from '../domain/dashboard';
-import { ArrowRightIcon, CheckIcon, CodiQrGraphic, CopyIcon, LinkIcon, PlusIcon, QrCodeIcon, ShareIcon } from './DashboardIcons';
+import { ArrowRightIcon, BoltIcon, CheckIcon, CodiQrGraphic, CopyIcon, LinkIcon, PlusIcon, QrCodeIcon, ShareIcon } from './DashboardIcons';
 
 interface QuickPaymentsViewProps {
   readonly profile: DashboardProfileDto;
@@ -219,7 +219,7 @@ export function QuickPaymentsView({
                   onClick={() => setMethod(item.id)}
                 >
                   <span style={{ marginTop: '2px' }}>
-                    {item.id === 'CODI_QR' ? <QrCodeIcon /> : <LinkIcon />}
+                    {item.id === 'CODI_QR' ? <QrCodeIcon /> : item.id === 'CODI_PUSH' ? <BoltIcon /> : <LinkIcon />}
                   </span>
                   <span>
                     <span className="db-method-title">{item.title}</span>
@@ -237,7 +237,15 @@ export function QuickPaymentsView({
           )}
 
           <button type="submit" className="db-btn-accent" disabled={busy || !effectiveCustomerId}>
-            <span>{busy ? 'Generando cobro...' : method === 'CODI_QR' ? 'Generar QR CoDi' : 'Generar enlace de pago'}</span>
+            <span>
+              {busy
+                ? 'Generando cobro...'
+                : method === 'CODI_QR'
+                  ? 'Generar QR CoDi'
+                  : method === 'CODI_PUSH'
+                    ? 'Enviar cobro CoDi'
+                    : 'Generar enlace de pago'}
+            </span>
             <ArrowRightIcon />
           </button>
         </form>
@@ -267,7 +275,13 @@ export function QuickPaymentsView({
             </div>
             <div className="db-preview-meta">
               <span>Vence {formatDate(createdResult ? createdResult.charge.dueDate : dueDate)}</span>
-              <span>{(createdResult?.method ?? method) === 'CODI_QR' ? 'CoDi 0% comisión' : 'Enlace de pago'}</span>
+              <span>
+                {(createdResult?.method ?? method) === 'CODI_QR'
+                  ? 'CoDi 0% comisión'
+                  : (createdResult?.method ?? method) === 'CODI_PUSH'
+                    ? 'CoDi al teléfono del cliente'
+                    : 'Enlace de pago'}
+              </span>
             </div>
             {createdResult?.paymentLinkUrl && (
               <div className="db-link-box" aria-label="Enlace de pago generado">
@@ -275,6 +289,16 @@ export function QuickPaymentsView({
               </div>
             )}
           </div>
+
+          {createdResult?.method === 'CODI_PUSH' && (
+            <div className="db-qr-panel">
+              <BoltIcon />
+              <strong>La solicitud se envió al teléfono del cliente</strong>
+              <span className="db-muted">
+                {createdResult.charge.customerName} recibe el cobro CoDi en su teléfono.
+              </span>
+            </div>
+          )}
 
           {(createdResult?.method ?? method) === 'CODI_QR' && (
             <div className="db-qr-panel">

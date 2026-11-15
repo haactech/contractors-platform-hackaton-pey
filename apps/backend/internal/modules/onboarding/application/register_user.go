@@ -7,18 +7,19 @@ import (
 	"log"
 )
 
-// RegisterUser guarda el usuario creado desde el formulario y registra su CLABE en Pey.
+// RegisterUser guarda el contrato del vendedor, su primer cliente y registra su CLABE en Pey.
 type RegisterUser struct {
 	repository domain.Repository
 	banks      domain.BankRegistrar
+	clients    domain.ClientStore
 }
 
-// NewRegisterUser prepara el acto de alta con el repositorio y el registro en Pey.
-func NewRegisterUser(repository domain.Repository, banks domain.BankRegistrar) *RegisterUser {
-	return &RegisterUser{repository: repository, banks: banks}
+// NewRegisterUser prepara el acto de alta con el repositorio, el registro en Pey y los clientes.
+func NewRegisterUser(repository domain.Repository, banks domain.BankRegistrar, clients domain.ClientStore) *RegisterUser {
+	return &RegisterUser{repository: repository, banks: banks, clients: clients}
 }
 
-// Create pide el usuario al contrato, lo guarda y, si Pey responde, anota el id y el estado.
+// Create arma el vendedor, lo guarda y pide a Pey el bank id de su CLABE.
 func (act *RegisterUser) Create(ctx context.Context, input domain.Input) (domain.Onboarding, map[string]string, error) {
 	user, fieldErrors := domain.Build(input)
 	if len(fieldErrors) > 0 {
@@ -38,10 +39,19 @@ func (act *RegisterUser) Create(ctx context.Context, input domain.Input) (domain
 	if err != nil {
 		return domain.Onboarding{}, nil, err
 	}
-	return act.recordPeyAccount(ctx, saved), nil, nil
+	if err := act.clients.SaveFirst(saved.ID, saved.Customer); err != nil {
+		if removeErr := act.repository.Remove(saved.ID); removeErr != nil {
+			log.Printf("onboarding: remove vendor %s after client failure: %v", saved.ID, removeErr)
+		}
+		log.Printf("onboarding: first client %s: %v", saved.ID, err)
+		return domain.Onboarding{}, nil, err
+	}
+	return act.registerVendorBank(ctx, saved), nil, nil
 }
 
-func (act *RegisterUser) recordPeyAccount(ctx context.Context, saved domain.User) domain.Onboarding {
+// registerVendorBank envía la CLABE y la identidad del vendedor ya guardado a Pey.
+// El id y el estado que Pey devuelve se anotan solo en el contrato de ese vendedor.
+func (act *RegisterUser) registerVendorBank(ctx context.Context, saved domain.User) domain.Onboarding {
 	payload, ok := domain.EncodeRegistration(saved)
 	if !ok {
 		return domain.View(saved)
@@ -65,5 +75,6 @@ func (act *RegisterUser) recordPeyAccount(ctx context.Context, saved domain.User
 		log.Printf("onboarding: record bank account %s %s: %v", saved.ID, account.ID, err)
 		return domain.View(saved)
 	}
+	recorded.Customer = saved.Customer
 	return domain.View(recorded)
 }

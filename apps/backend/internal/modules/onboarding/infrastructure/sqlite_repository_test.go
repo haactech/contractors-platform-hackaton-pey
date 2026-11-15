@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"contractors-platform/backend/internal/modules/onboarding/domain"
 	"contractors-platform/backend/internal/platform/database"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"reflect"
@@ -10,29 +11,27 @@ import (
 )
 
 func TestSQLiteRepositoryPersistsAcrossReopen(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "data", "app.db")
+	dir := filepath.Join(t.TempDir(), "data")
 	taxRegime := "General"
 	input := domain.Input{Name: "Ana", Profession: "Electrician", Client: domain.Client{Name: "Luis", Phone: "+52 555 123 4567", Email: "luis@example.com"},
 		TaxRegime: &taxRegime, BusinessName: "Electrical Services", BusinessActivity: "Electrical installations", RFC: "AAA010101AAA", CLABE: "002010077777777771"}
 
-	db, err := database.OpenSQLite(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	repository, err := NewSQLiteRepository(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	repository, vendors := openStores(t, dir)
 	created, err := repository.Save(mustUser(t, input))
 	if err != nil {
 		t.Fatal(err)
 	}
 	created.BankAccountID = "01BANK"
 	created.CodiStatus = "PENDING"
+	created.Customer.Name = "Otra persona"
 	created, err = repository.RecordBankAccount(created)
 	if err != nil {
 		t.Fatal(err)
 	}
+	if created.Customer.Name != "" || created.BankAccountID != "01BANK" || created.BusinessName != "Electrical Services" {
+		t.Fatalf("bank attach rewrote another table or kept a client row: %+v", created)
+	}
+	assertSplit(t, vendors, created.ID, "01BANK", "Electrical Services")
 	withoutTax := input
 	withoutTax.TaxRegime = nil
 	withoutTax.CLABE = "012180001183597198"
@@ -40,17 +39,11 @@ func TestSQLiteRepositoryPersistsAcrossReopen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = db.Close()
+	other.Customer = domain.Customer{}
+	_ = vendors.Close()
 
-	db, err = database.OpenSQLite(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	repository, err = NewSQLiteRepository(db)
-	if err != nil {
-		t.Fatal(err)
-	}
+	repository, vendors = openStores(t, dir)
+	defer vendors.Close()
 	for _, want := range []domain.User{created, other} {
 		got, found := repository.Find(want.ID)
 		if !found || !reflect.DeepEqual(got, want) {
@@ -60,47 +53,90 @@ func TestSQLiteRepositoryPersistsAcrossReopen(t *testing.T) {
 	if _, found := repository.Find("missing"); found {
 		t.Fatal("expected missing record")
 	}
-}
-
-func TestSQLiteRepositoryMigratesLegacyTable(t *testing.T) {
-	db, err := database.OpenSQLite(filepath.Join(t.TempDir(), "app.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-	if _, err := db.Exec(`CREATE TABLE onboardings (
-		id TEXT PRIMARY KEY, name TEXT NOT NULL, profession TEXT NOT NULL,
-		client_name TEXT NOT NULL, client_phone TEXT NOT NULL, client_email TEXT NOT NULL,
-		tax_regime TEXT, business_name TEXT NOT NULL, business_activity TEXT NOT NULL, rfc TEXT NOT NULL,
-		created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Exec(`INSERT INTO onboardings (id, name, profession, client_name, client_phone, client_email,
-		business_name, business_activity, rfc) VALUES ('legacy', 'Ana', 'Electrician', 'Luis', '5551234567',
-		'luis@example.com', 'Electrical Services', 'Electrical installations', 'AAA010101AAA')`); err != nil {
-		t.Fatal(err)
-	}
-	for range 2 { // the migration must be idempotent
-		if _, err := NewSQLiteRepository(db); err != nil {
-			t.Fatal(err)
-		}
-	}
-	repository, _ := NewSQLiteRepository(db)
-	legacy, found := repository.Find("legacy")
-	if !found || legacy.CLABE != "" {
-		t.Fatalf("legacy record: found=%v %+v", found, legacy)
-	}
-	input := domain.Input{Name: "Ana", Profession: "Electrician", Client: domain.Client{Name: "Luis", Phone: "+52 555 123 4567", Email: "luis@example.com"},
-		BusinessName: "Electrical Services", BusinessActivity: "Electrical installations", RFC: "AAA010101AAA", CLABE: "002010077777777771"}
-	created, err := repository.Save(mustUser(t, input))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, _ := repository.Find(created.ID); got.CLABE != "002010077777777771" {
-		t.Fatalf("clabe not persisted: %+v", got)
-	}
 	if _, err := repository.Save(mustUser(t, input)); !errors.Is(err, domain.ErrCLABETaken) {
 		t.Fatalf("duplicate clabe: %v", err)
+	}
+}
+
+func openStores(t *testing.T, dir string) (*SQLiteRepository, *sql.DB) {
+	t.Helper()
+	vendors, err := database.OpenSQLite(filepath.Join(dir, "vendors.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository, err := NewSQLiteRepository(vendors)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return repository, vendors
+}
+
+func assertSplit(t *testing.T, vendors *sql.DB, vendorID, bankID, businessName string) {
+	t.Helper()
+	var gotBank, gotBusiness, gotPerson string
+	if err := vendors.QueryRow(`SELECT bank_account_id FROM bank_accounts WHERE vendor_id = ?`, vendorID).Scan(&gotBank); err != nil {
+		t.Fatal(err)
+	}
+	if gotBank != bankID {
+		t.Fatalf("bank id: %s", gotBank)
+	}
+	if err := vendors.QueryRow(`SELECT business_name FROM businesses WHERE vendor_id = ?`, vendorID).Scan(&gotBusiness); err != nil {
+		t.Fatal(err)
+	}
+	if gotBusiness != businessName {
+		t.Fatalf("business name: %s", gotBusiness)
+	}
+	if err := vendors.QueryRow(`SELECT name FROM vendors WHERE id = ?`, vendorID).Scan(&gotPerson); err != nil {
+		t.Fatal(err)
+	}
+	if gotPerson == "" {
+		t.Fatal("missing vendor person")
+	}
+	columns, err := columnSet(vendors, "vendors")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if columns["clabe"] || columns["business_name"] || columns["bank_account_id"] {
+		t.Fatalf("vendor table still mixes concerns: %v", columns)
+	}
+	var clientsTable string
+	err = vendors.QueryRow(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'clients'`).Scan(&clientsTable)
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("vendors db still has a clients table: %v %s", err, clientsTable)
+	}
+}
+
+func columnSet(db *sql.DB, table string) (map[string]bool, error) {
+	rows, err := db.Query(`PRAGMA table_info(` + table + `)`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	columns := map[string]bool{}
+	for rows.Next() {
+		var cid, notNull, pk int
+		var name, columnType string
+		var defaultValue sql.NullString
+		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
+			return nil, err
+		}
+		columns[name] = true
+	}
+	return columns, rows.Err()
+}
+
+func TestRemoveDeletesTheVendor(t *testing.T) {
+	repository, vendors := openStores(t, t.TempDir())
+	defer vendors.Close()
+	created, err := repository.Save(mustUser(t, domain.Input{Name: "Ana", Profession: "Electrician", Client: domain.Client{Name: "Luis", Phone: "5551234567", Email: "luis@example.com"}, BusinessName: "Electrical Services", BusinessActivity: "Electrical installations", RFC: "AAA010101AAA", CLABE: "002010077777777771"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.Remove(created.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := repository.Find(created.ID); found {
+		t.Fatal("vendor remained after remove")
 	}
 }
 

@@ -122,7 +122,7 @@ export function FirstChargeStepper({
             <strong>{profile.business.name}</strong> ya puede cobrar. Vamos a crear tu primer cobro en menos de un minuto.
           </p>
           <ul className="db-stepper-benefits">
-            <li>Tu cliente paga con un enlace de pago o con QR CoDi desde su banco.</li>
+            <li>Tu cliente paga con un enlace, un QR CoDi o un cobro directo a su teléfono.</li>
             <li>El dinero llega directo a tu CLABE {clabeLabel}; nosotros nunca lo tocamos.</li>
             <li>Ves en un solo lugar quién te pagó y quién no.</li>
           </ul>
@@ -249,7 +249,7 @@ export function FirstChargeStepper({
             <div className="db-method-grid" role="group" aria-label="Modalidad de cobro">
               {QUICK_PAYMENT_METHODS.map((item) => (
                 <button key={item.id} type="button" className="db-method-card" aria-pressed={method === item.id} onClick={() => setMethod(item.id)}>
-                  <span style={{ marginTop: '2px' }}>{item.id === 'CODI_QR' ? <QrCodeIcon /> : <LinkIcon />}</span>
+                  <span style={{ marginTop: '2px' }}>{item.id === 'CODI_QR' ? <QrCodeIcon /> : item.id === 'CODI_PUSH' ? <BoltIcon /> : <LinkIcon />}</span>
                   <span>
                     <span className="db-method-title">{item.title}</span>
                     <span className="db-method-desc">{item.description}</span>

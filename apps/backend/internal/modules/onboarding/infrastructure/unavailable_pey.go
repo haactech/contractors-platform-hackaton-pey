@@ -15,3 +15,8 @@ func NewUnavailablePey() UnavailablePey { return UnavailablePey{} }
 func (UnavailablePey) Register(context.Context, []byte) ([]byte, error) {
 	return nil, errors.New("pey no está configurado")
 }
+
+// Collect informa que Pey no está configurado.
+func (UnavailablePey) Collect(context.Context, string, []byte) ([]byte, error) {
+	return nil, errors.New("pey no está configurado")
+}

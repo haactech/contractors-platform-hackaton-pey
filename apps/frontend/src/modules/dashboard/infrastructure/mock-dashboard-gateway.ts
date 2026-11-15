@@ -9,6 +9,7 @@ import type {
   DashboardSummaryDto,
   PaymentMethod,
   UpdateDashboardChargeRequest,
+  VendorClientDto,
 } from '@platform/contracts';
 import {
   DashboardApiError,
@@ -27,13 +28,11 @@ import {
   MAX_TAGS,
   NOTE_MAX_LENGTH,
   TAG_MAX_LENGTH,
-  mxPhoneDigits,
   normalizeNewCustomerInput,
   todayInMexico,
   validateNewCustomer,
   type CustomerBusinessDetails,
   type CustomerEntityType,
-  type CustomerProfileRecord,
   type NewCustomerInput,
 } from '../domain/dashboard';
 
@@ -225,15 +224,23 @@ function fail(status: number, message: string, code?: DashboardErrorCode, fields
 
 const normalize = (value: string) => value.normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
-function toProfileRecord(customer: StoredCustomer): CustomerProfileRecord {
-  const entityType: CustomerEntityType = customer.entityType ?? (customer.business?.legalName ? 'company' : 'individual');
+function toVendorClient(contractorId: string, customer: StoredCustomer): VendorClientDto {
+  const now = new Date().toISOString();
   return {
-    customerId: customer.customerId,
-    entityType,
+    clientId: customer.customerId,
+    vendorId: contractorId,
+    entityType: customer.entityType ?? 'individual',
     name: customer.name,
     phone: customer.phone,
     email: customer.email,
-    ...(customer.business ? { business: { ...customer.business } } : {}),
+    ...(customer.business?.legalName ? { legalName: customer.business.legalName } : {}),
+    ...(customer.business?.tradeName ? { tradeName: customer.business.tradeName } : {}),
+    ...(customer.business?.rfc ? { rfc: customer.business.rfc } : {}),
+    ...(customer.business?.activity ? { activity: customer.business.activity } : {}),
+    ...(customer.business?.taxRegime ? { taxRegime: customer.business.taxRegime } : {}),
+    ...(customer.business?.fiscalAddress ? { fiscalAddress: customer.business.fiscalAddress } : {}),
+    createdAt: now,
+    updatedAt: now,
   };
 }
 
@@ -383,56 +390,8 @@ export function createMockDashboard(): MockDashboard {
       return { ...MOCK_PROFILE, contractorId };
     },
 
-    syncFirstCustomer(contractorId, firstCustomer) {
-      if (!firstCustomer.name.trim()) return;
-      const state = getState(contractorId);
-      const phone = mxPhoneDigits(firstCustomer.phone);
-      const existingFirst = state.customers.find((customer) => customer.customerId === 'cus_first');
-      if (existingFirst) {
-        if (existingFirst.name === firstCustomer.name && existingFirst.phone === phone && existingFirst.email === firstCustomer.email) {
-          return;
-        }
-        const updated: WorkspaceState = {
-          ...state,
-          customers: state.customers.map((customer) =>
-            customer.customerId === 'cus_first'
-              ? { ...customer, name: firstCustomer.name, phone, email: firstCustomer.email }
-              : customer,
-          ),
-        };
-        saveState(contractorId, updated);
-        return;
-      }
-
-      const duplicate = state.customers.some(
-        (customer) => normalize(customer.name) === normalize(firstCustomer.name) && customer.phone === phone,
-      );
-      if (duplicate) return;
-
-      const updated: WorkspaceState = {
-        ...state,
-        customers: [
-          {
-            customerId: 'cus_first',
-            entityType: 'individual',
-            name: firstCustomer.name,
-            phone,
-            email: firstCustomer.email,
-          },
-          ...state.customers,
-        ],
-      };
-      saveState(contractorId, updated);
-    },
-
-    listDetails(contractorId) {
-      const state = getState(contractorId);
-      return Object.fromEntries(state.customers.map((customer) => [customer.customerId, toProfileRecord(customer)]));
-    },
-
-    listPhones(contractorId) {
-      const state = getState(contractorId);
-      return Object.fromEntries(state.customers.map((customer) => [customer.customerId, customer.phone]));
+    async list(contractorId) {
+      return getState(contractorId).customers.map((customer) => toVendorClient(contractorId, customer));
     },
 
     async createCustomer(contractorId, input: NewCustomerInput) {
@@ -457,7 +416,7 @@ export function createMockDashboard(): MockDashboard {
         customers: [created, ...state.customers],
       };
       saveState(contractorId, nextState);
-      return buildCustomerRow(nextState, created);
+      return toVendorClient(contractorId, created);
     },
 
     async updateCustomer(contractorId, customerId, input: NewCustomerInput) {
@@ -483,7 +442,7 @@ export function createMockDashboard(): MockDashboard {
         customers: state.customers.map((customer) => (customer.customerId === customerId ? updatedCustomer : customer)),
       };
       saveState(contractorId, nextState);
-      return buildCustomerRow(nextState, updatedCustomer);
+      return toVendorClient(contractorId, updatedCustomer);
     },
 
     async summary(contractorId, query = {}) {
@@ -667,7 +626,7 @@ export function createMockDashboard(): MockDashboard {
         cancelledAt: null,
         reminderCount: 0,
         note: null,
-        tags: input.method === 'CODI_QR' ? ['codi'] : ['link'],
+        tags: input.method === 'PAYMENT_LINK' ? ['link'] : ['codi'],
       };
       const nextState: WorkspaceState = {
         ...state,
@@ -680,7 +639,9 @@ export function createMockDashboard(): MockDashboard {
         method: input.method,
         ...(input.method === 'PAYMENT_LINK'
           ? { paymentLinkUrl: `https://pay.praxis-demo.mx/c/${chargeId}` }
-          : { codiQrString: `CODI://pay/${contractorId}/${chargeId}/${input.amountCents}` }),
+          : input.method === 'CODI_QR'
+            ? { codiQrString: `CODI://pay/${contractorId}/${chargeId}/${input.amountCents}` }
+            : {}),
       };
     },
 

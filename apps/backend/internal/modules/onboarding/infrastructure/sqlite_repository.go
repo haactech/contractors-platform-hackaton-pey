@@ -10,86 +10,65 @@ import (
 	"strings"
 )
 
-func onboardingSchema() string {
-	return `
-CREATE TABLE IF NOT EXISTS onboardings (
-	id                TEXT PRIMARY KEY,
-	name              TEXT NOT NULL,
-	profession        TEXT NOT NULL,
-	client_name       TEXT NOT NULL,
-	client_phone      TEXT NOT NULL,
-	client_email      TEXT NOT NULL,
-	tax_regime        TEXT,
-	business_name     TEXT NOT NULL,
-	business_activity TEXT NOT NULL,
-	rfc               TEXT NOT NULL,
-	clabe             TEXT NOT NULL DEFAULT '',
-	codi_status       TEXT NOT NULL DEFAULT '` + domain.NotRegisteredStatus() + `',
-	bank_account_id   TEXT NOT NULL DEFAULT '',
-	created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-)`
+func vendorTables() []string {
+	return []string{
+		`CREATE TABLE IF NOT EXISTS vendors (
+			id         TEXT PRIMARY KEY,
+			name       TEXT NOT NULL,
+			profession TEXT NOT NULL,
+			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')))`,
+		`CREATE TABLE IF NOT EXISTS businesses (
+			vendor_id         TEXT PRIMARY KEY,
+			business_name     TEXT NOT NULL,
+			business_activity TEXT NOT NULL,
+			rfc               TEXT NOT NULL,
+			tax_regime        TEXT)`,
+		`CREATE TABLE IF NOT EXISTS bank_accounts (
+			vendor_id       TEXT PRIMARY KEY,
+			clabe           TEXT NOT NULL DEFAULT '',
+			codi_status     TEXT NOT NULL DEFAULT '` + domain.NotRegisteredStatus() + `',
+			bank_account_id TEXT NOT NULL DEFAULT '')`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS bank_accounts_clabe_unique ON bank_accounts(clabe) WHERE clabe <> ''`,
+	}
 }
 
-type SQLiteRepository struct{ db *sql.DB }
-
-// NewSQLiteRepository crea la tabla de usuarios si todavía no existe.
-func NewSQLiteRepository(db *sql.DB) (*SQLiteRepository, error) {
-	if _, err := db.Exec(onboardingSchema()); err != nil {
-		return nil, err
-	}
-	if err := ensureUserColumns(db); err != nil {
-		return nil, err
-	}
-	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS onboardings_clabe_unique ON onboardings(clabe) WHERE clabe <> ''`); err != nil {
-		return nil, err
-	}
-	return &SQLiteRepository{db: db}, nil
+// SQLiteRepository guarda la persona, su negocio y su cuenta. Los clientes viven en otro módulo.
+type SQLiteRepository struct {
+	vendors *sql.DB
 }
 
-func ensureUserColumns(db *sql.DB) error {
-	rows, err := db.Query(`PRAGMA table_info(onboardings)`)
-	if err != nil {
-		return err
+// NewSQLiteRepository crea las tablas del vendedor, su negocio y su cuenta.
+func NewSQLiteRepository(vendors *sql.DB) (*SQLiteRepository, error) {
+	if err := execEach(vendors, vendorTables()); err != nil {
+		return nil, err
 	}
-	defer rows.Close()
-	present := map[string]bool{}
-	for rows.Next() {
-		var cid, notNull, pk int
-		var name, columnType string
-		var defaultValue sql.NullString
-		if err := rows.Scan(&cid, &name, &columnType, &notNull, &defaultValue, &pk); err != nil {
-			return err
-		}
-		present[name] = true
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-	if !present["codi_status"] {
-		if _, err := db.Exec(`ALTER TABLE onboardings ADD COLUMN codi_status TEXT NOT NULL DEFAULT '` + domain.NotRegisteredStatus() + `'`); err != nil {
-			return err
-		}
-	}
-	if !present["clabe"] {
-		if _, err := db.Exec(`ALTER TABLE onboardings ADD COLUMN clabe TEXT NOT NULL DEFAULT ''`); err != nil {
-			return err
-		}
-	}
-	if !present["bank_account_id"] {
-		if _, err := db.Exec(`ALTER TABLE onboardings ADD COLUMN bank_account_id TEXT NOT NULL DEFAULT ''`); err != nil {
+	return &SQLiteRepository{vendors: vendors}, nil
+}
+
+func execEach(db *sql.DB, statements []string) error {
+	for _, statement := range statements {
+		if _, err := db.Exec(statement); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// HasCLABE indica si otro usuario ya guardó esa CLABE.
+func newID() (string, error) {
+	var bytes [16]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes[:]), nil
+}
+
+// HasCLABE indica si otra cuenta ya guardó esa CLABE.
 func (repository *SQLiteRepository) HasCLABE(clabe string) (bool, error) {
 	if clabe == "" {
 		return false, nil
 	}
 	var found int
-	err := repository.db.QueryRow(`SELECT 1 FROM onboardings WHERE clabe = ? LIMIT 1`, clabe).Scan(&found)
+	err := repository.vendors.QueryRow(`SELECT 1 FROM bank_accounts WHERE clabe = ? LIMIT 1`, clabe).Scan(&found)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -99,7 +78,7 @@ func (repository *SQLiteRepository) HasCLABE(clabe string) (bool, error) {
 	return true, nil
 }
 
-// Save guarda el usuario si el contrato lo permite y le asigna un id.
+// Save guarda la persona, su negocio y su cuenta. El primer cliente lo escribe el módulo de clientes.
 func (repository *SQLiteRepository) Save(user domain.User) (domain.User, error) {
 	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
 		return domain.User{}, errRejected
@@ -111,31 +90,66 @@ func (repository *SQLiteRepository) Save(user domain.User) (domain.User, error) 
 	if taken {
 		return domain.User{}, domain.ErrCLABETaken
 	}
-	var bytes [16]byte
-	if _, err := rand.Read(bytes[:]); err != nil {
+	user.ID, err = newID()
+	if err != nil {
 		return domain.User{}, err
 	}
-	user.ID = hex.EncodeToString(bytes[:])
-	_, err = repository.db.Exec(`INSERT INTO onboardings
-		(id, name, profession, client_name, client_phone, client_email, tax_regime, business_name, business_activity, rfc, clabe, codi_status, bank_account_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		user.ID, user.Name, user.Profession, user.Customer.Name, user.Customer.Phone, user.Customer.Email,
-		user.TaxRegime, user.BusinessName, user.BusinessActivity, user.RFC, user.CLABE, user.CodiStatus, user.BankAccountID)
+	transaction, err := repository.vendors.Begin()
 	if err != nil {
+		return domain.User{}, err
+	}
+	_, err = transaction.Exec(`INSERT INTO vendors (id, name, profession) VALUES (?, ?, ?)`,
+		user.ID, user.Name, user.Profession)
+	if err != nil {
+		_ = transaction.Rollback()
+		return domain.User{}, err
+	}
+	_, err = transaction.Exec(`INSERT INTO businesses (vendor_id, business_name, business_activity, rfc, tax_regime) VALUES (?, ?, ?, ?, ?)`,
+		user.ID, user.BusinessName, user.BusinessActivity, user.RFC, user.TaxRegime)
+	if err != nil {
+		_ = transaction.Rollback()
+		return domain.User{}, err
+	}
+	_, err = transaction.Exec(`INSERT INTO bank_accounts (vendor_id, clabe, codi_status, bank_account_id) VALUES (?, ?, ?, ?)`,
+		user.ID, user.CLABE, user.CodiStatus, user.BankAccountID)
+	if err != nil {
+		_ = transaction.Rollback()
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			return domain.User{}, domain.ErrCLABETaken
 		}
 		return domain.User{}, err
 	}
+	if err := transaction.Commit(); err != nil {
+		return domain.User{}, err
+	}
 	return cloneUser(user), nil
 }
 
-// RecordBankAccount anota el id y el estado que Pey devolvió para un usuario ya guardado.
+// Remove borra el alta que no pudo guardar su primer cliente.
+func (repository *SQLiteRepository) Remove(id string) error {
+	transaction, err := repository.vendors.Begin()
+	if err != nil {
+		return err
+	}
+	for _, statement := range []string{
+		`DELETE FROM bank_accounts WHERE vendor_id = ?`,
+		`DELETE FROM businesses WHERE vendor_id = ?`,
+		`DELETE FROM vendors WHERE id = ?`,
+	} {
+		if _, err := transaction.Exec(statement, id); err != nil {
+			_ = transaction.Rollback()
+			return err
+		}
+	}
+	return transaction.Commit()
+}
+
+// RecordBankAccount anota el id y el estado de Pey solo en la cuenta del vendedor.
 func (repository *SQLiteRepository) RecordBankAccount(user domain.User) (domain.User, error) {
 	if fieldErrors := domain.Allow(user); len(fieldErrors) > 0 {
 		return domain.User{}, errRejected
 	}
-	result, err := repository.db.Exec(`UPDATE onboardings SET bank_account_id = ?, codi_status = ? WHERE id = ?`,
+	result, err := repository.vendors.Exec(`UPDATE bank_accounts SET bank_account_id = ?, codi_status = ? WHERE vendor_id = ?`,
 		user.BankAccountID, user.CodiStatus, user.ID)
 	if err != nil {
 		return domain.User{}, err
@@ -154,18 +168,22 @@ func (repository *SQLiteRepository) RecordBankAccount(user domain.User) (domain.
 	return recorded, nil
 }
 
-// Find busca un usuario por id.
+// Find arma el vendedor desde su persona, su negocio y su cuenta. El cliente lo adjunta la lectura.
 func (repository *SQLiteRepository) Find(id string) (domain.User, bool) {
 	var user domain.User
 	var taxRegime sql.NullString
-	err := repository.db.QueryRow(`SELECT id, name, profession, client_name, client_phone, client_email,
-		tax_regime, business_name, business_activity, rfc, clabe, codi_status, bank_account_id
-		FROM onboardings WHERE id = ?`, id).Scan(
-		&user.ID, &user.Name, &user.Profession, &user.Customer.Name, &user.Customer.Phone, &user.Customer.Email,
-		&taxRegime, &user.BusinessName, &user.BusinessActivity, &user.RFC, &user.CLABE, &user.CodiStatus, &user.BankAccountID)
+	err := repository.vendors.QueryRow(`SELECT vendors.id, vendors.name, vendors.profession,
+		businesses.business_name, businesses.business_activity, businesses.rfc, businesses.tax_regime,
+		bank_accounts.clabe, bank_accounts.codi_status, bank_accounts.bank_account_id
+		FROM vendors
+		JOIN businesses ON businesses.vendor_id = vendors.id
+		JOIN bank_accounts ON bank_accounts.vendor_id = vendors.id
+		WHERE vendors.id = ?`, id).Scan(
+		&user.ID, &user.Name, &user.Profession, &user.BusinessName, &user.BusinessActivity, &user.RFC, &taxRegime,
+		&user.CLABE, &user.CodiStatus, &user.BankAccountID)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
-			log.Printf("onboarding: find %s: %v", id, err)
+			log.Printf("onboarding: find vendor %s: %v", id, err)
 		}
 		return domain.User{}, false
 	}

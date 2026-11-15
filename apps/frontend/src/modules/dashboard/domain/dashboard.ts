@@ -61,6 +61,11 @@ export const QUICK_PAYMENT_METHODS: readonly {
     title: 'QR CoDi',
     description: 'Cobra al instante en persona sin comisiones.',
   },
+  {
+    id: 'CODI_PUSH',
+    title: 'CoDi al teléfono',
+    description: 'Envía el cobro directo al teléfono del cliente.',
+  },
 ];
 
 export type DashboardScreen = 'dashboard' | 'payment' | 'charges' | 'clients' | 'profile';
@@ -277,7 +282,7 @@ export function validateNewCustomer(input: NewCustomerInput): CustomerFieldError
   }
   if (biz?.activity && biz.activity.length > 255) errors.activity = 'Usa un máximo de 255 caracteres.';
   if (biz?.taxRegime && biz.taxRegime.length > 255) errors.taxRegime = 'Usa un máximo de 255 caracteres.';
-  if (biz?.fiscalAddress && biz.fiscalAddress.length > 500) errors.fiscalAddress = 'Usa un máximo de 500 caracteres.';
+  if (biz?.fiscalAddress && biz.fiscalAddress.length > 255) errors.fiscalAddress = 'Usa un máximo de 255 caracteres.';
 
   return errors;
 }

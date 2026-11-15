@@ -3,11 +3,14 @@ package app
 import (
 	"bytes"
 	"context"
+	clientsinfra "contractors-platform/backend/internal/modules/clients/infrastructure"
 	dashboarddomain "contractors-platform/backend/internal/modules/dashboard/domain"
 	dashboardpresentation "contractors-platform/backend/internal/modules/dashboard/presentation"
 	"contractors-platform/backend/internal/modules/onboarding/definitions"
 	"contractors-platform/backend/internal/modules/onboarding/domain"
 	"contractors-platform/backend/internal/modules/onboarding/infrastructure"
+	paymentsdomain "contractors-platform/backend/internal/modules/payments/domain"
+	paymentsinfra "contractors-platform/backend/internal/modules/payments/infrastructure"
 	"contractors-platform/backend/internal/platform/database"
 	"encoding/json"
 	"errors"
@@ -243,16 +246,26 @@ func TestHTTPStatusCodes(t *testing.T) {
 }
 
 func TestCreateAndRetrieveWithSQLite(t *testing.T) {
-	db, err := database.OpenSQLite(filepath.Join(t.TempDir(), "app.db"))
+	dir := t.TempDir()
+	vendors, err := database.OpenSQLite(filepath.Join(dir, "vendors.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	repository, err := infrastructure.NewSQLiteRepository(db)
+	defer vendors.Close()
+	clients, err := database.OpenSQLite(filepath.Join(dir, "clients.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := NewWith(repository, infrastructure.NewUnavailablePey())
+	defer clients.Close()
+	repository, err := infrastructure.NewSQLiteRepository(vendors)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientsRepository, err := clientsinfra.NewSQLiteRepository(clients)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := Mount(repository, infrastructure.NewUnavailablePey(), paymentsinfra.NewMemoryRepository(), paymentsinfra.NewSQLiteVendors(vendors), paymentsinfra.UnavailableCollector{}, paymentsdomain.Links{}, clientsRepository, clientsinfra.NewSQLiteVendors(vendors))
 	response := submit(handler, validInput())
 	if response.Code != http.StatusCreated {
 		t.Fatalf("create: %d %s", response.Code, response.Body)
@@ -260,8 +273,17 @@ func TestCreateAndRetrieveWithSQLite(t *testing.T) {
 	location := response.Header().Get("Location")
 	found := httptest.NewRecorder()
 	handler.ServeHTTP(found, httptest.NewRequest(http.MethodGet, location, nil))
-	if found.Code != http.StatusOK || !strings.Contains(found.Body.String(), `"rfc":"AAA010101AAA"`) {
+	if found.Code != http.StatusOK || !strings.Contains(found.Body.String(), `"rfc":"AAA010101AAA"`) || !strings.Contains(found.Body.String(), `"email":"luis@example.com"`) {
 		t.Fatalf("find: %d %s", found.Code, found.Body)
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	_ = json.Unmarshal(response.Body.Bytes(), &created)
+	listed := httptest.NewRecorder()
+	handler.ServeHTTP(listed, httptest.NewRequest(http.MethodGet, "/api/contractors/"+created.ID+"/clients", nil))
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), `"entityType":"individual"`) || !strings.Contains(listed.Body.String(), `"+52 555 123 4567"`) {
+		t.Fatalf("clients: %d %s", listed.Code, listed.Body)
 	}
 }
 

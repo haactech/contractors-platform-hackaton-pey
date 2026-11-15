@@ -31,7 +31,28 @@ export interface OnboardingDto extends CreateOnboardingRequest {
   id: string;
 }
 
-export type PaymentMethodDto = "PAYMENT_LINK" | "CODI_QR";
+export type PaymentMethodDto = "PAYMENT_LINK" | "CODI_QR" | "CODI_PUSH";
+
+/**
+ * Client stored for a vendor. The onboarding nested person stays `ClientDto`.
+ * Balances are not part of this record.
+ */
+export interface VendorClientDto {
+  clientId: string;
+  vendorId: string;
+  entityType: "individual" | "company";
+  name: string;
+  phone: string;
+  email: string;
+  legalName?: string;
+  tradeName?: string;
+  rfc?: string;
+  activity?: string;
+  taxRegime?: string;
+  fiscalAddress?: string;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export type PaymentStatusDto =
   | "PENDING_PAYMENT"
@@ -42,11 +63,15 @@ export type PaymentStatusDto =
 
 export interface CreatePaymentIntentRequest {
   onboardingId: string;
+  /** When set, the stored client is used and the request phone is ignored. */
+  clientId?: string;
   clientName: string;
   clientPhone?: string;
   clientEmail?: string;
   concept: string;
   amountCents: number;
+  /** YYYY-MM-DD. The charge form collects it; readers can ignore it. */
+  dueDate?: string;
   method: PaymentMethodDto;
 }
 
@@ -58,6 +83,7 @@ export interface PaymentIntentDto {
   clientEmail?: string;
   concept: string;
   amountCents: number;
+  dueDate?: string;
   method: PaymentMethodDto;
   status: PaymentStatusDto;
   paymentLinkUrl?: string;
