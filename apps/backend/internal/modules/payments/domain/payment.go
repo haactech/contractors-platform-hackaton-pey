@@ -32,10 +32,12 @@ type Collector interface {
 	Collect(context.Context, string, []byte) ([]byte, error)
 }
 
-// Repository guarda el cobro después de que Pey respondió.
+// Repository guarda y lee los cobros después de que Pey respondió.
 type Repository interface {
 	Allocate() (string, error)
 	Save(Payment) (Payment, error)
+	Find(id string) (Payment, bool, error)
+	ListByVendor(vendorID string) ([]Payment, error)
 }
 
 // Links son las páginas HTTPS a las que Pey devuelve al pagador.

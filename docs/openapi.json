@@ -11,6 +11,27 @@
     }
   ],
   "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "getHealth",
+        "tags": [
+          "platform"
+        ],
+        "summary": "Liveness probe for the API process",
+        "responses": {
+          "200": {
+            "description": "Process is up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/auth/config": {
       "get": {
         "operationId": "getAuthConfig",
@@ -733,6 +754,83 @@
         }
       }
     },
+    "/api/onboarding/{id}/bank-account/retry": {
+      "post": {
+        "operationId": "retryOnboardingBankAccount",
+        "summary": "Retry Pey bank-account registration after a soft-fail",
+        "description": "Re-sends the stored CLABE to Pey when `bankReady` is false. Does not require changing the CLABE. Idempotent when already ACTIVE. Soft-fail still returns 200 with updated `codiStatus` / `bankReady`.",
+        "tags": [
+          "onboarding"
+        ],
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current onboarding record after retry attempt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Onboarding"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Email verification required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found or belongs to another account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "No CLABE on file to register",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/payments": {
       "post": {
         "operationId": "createPayment",
@@ -833,6 +931,68 @@
         "tags": [
           "payments"
         ]
+      }
+    },
+    "/api/contractors/{contractorId}/payments": {
+      "get": {
+        "operationId": "listVendorPayments",
+        "summary": "List payment intents for a vendor, newest first",
+        "description": "Returns stored payment intents created via POST /api/payments. Bank account ids are never included.",
+        "parameters": [
+          {
+            "name": "contractorId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "minLength": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Payment intents of that vendor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/PaymentIntent" }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid session",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          },
+          "404": {
+            "description": "Vendor was not found or does not belong to the session",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          }
+        },
+        "tags": ["payments"]
+      }
+    },
+    "/api/contractors/{contractorId}/payments/{paymentId}": {
+      "get": {
+        "operationId": "getVendorPayment",
+        "summary": "Read one payment intent of a vendor",
+        "parameters": [
+          { "name": "contractorId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+          { "name": "paymentId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Payment intent",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PaymentIntent" } } }
+          },
+          "401": {
+            "description": "Missing or invalid session",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          },
+          "404": {
+            "description": "Vendor or payment was not found",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiError" } } }
+          }
+        },
+        "tags": ["payments"]
       }
     },
     "/api/contractors/{contractorId}/clients": {
@@ -999,7 +1159,9 @@
                     "activity": "Electrical installations",
                     "rfc": "AAA010101AAA",
                     "taxpayerType": "company",
-                    "clabeLast4": "7771"
+                    "clabeLast4": "7771",
+                    "codiStatus": "not_registered",
+                    "bankReady": false
                   },
                   "firstCustomer": {
                     "name": "Abarrotes Luis",
@@ -2318,6 +2480,19 @@
   },
   "components": {
     "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok"
+          }
+        }
+      },
       "VendorClient": {
         "type": "object",
         "additionalProperties": false,
@@ -2346,7 +2521,10 @@
         "properties": {
           "entityType": { "type": "string", "enum": ["individual", "company"] },
           "name": { "type": "string", "minLength": 1, "maxLength": 255 },
-          "phone": { "type": "string", "description": "10 Mexican digits on dashboard writes." },
+          "phone": {
+            "type": "string",
+            "description": "10 Mexican digits on dashboard writes. Leading +52/52 is stripped to the national number. CODI_PUSH requires this length on the stored client."
+          },
           "email": { "type": "string", "format": "email" },
           "legalName": { "type": "string", "maxLength": 255 },
           "tradeName": { "type": "string", "maxLength": 255 },
@@ -2374,7 +2552,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 255,
-            "description": "7–15 digits; optional leading +, spaces, parentheses and hyphens."
+            "description": "7–15 digits; optional leading +, spaces, parentheses and hyphens. Dashboard client writes require exactly 10 Mexican digits. CODI_PUSH uses the stored phone and needs 10 national digits after stripping a leading 52."
           },
           "email": {
             "type": "string",
@@ -2552,6 +2730,10 @@
           "onboardingId": {
             "type": "string"
           },
+          "clientId": {
+            "type": "string",
+            "description": "Stored client id when the charge was matched to a registered client."
+          },
           "clientName": {
             "type": "string"
           },
@@ -2609,8 +2791,20 @@
           }
         }
       },
+      "CodiStatus": {
+        "type": "string",
+        "enum": [
+          "not_registered",
+          "PENDING",
+          "PROCESSING",
+          "ACTIVE",
+          "ERROR"
+        ],
+        "description": "Pey bank-account activation status. not_registered means soft-fail or not yet sent to Pey."
+      },
       "Onboarding": {
         "type": "object",
+        "additionalProperties": false,
         "required": [
           "id",
           "name",
@@ -2619,7 +2813,9 @@
           "businessName",
           "businessActivity",
           "rfc",
-          "clabe"
+          "clabeLast4",
+          "codiStatus",
+          "bankReady"
         ],
         "properties": {
           "name": {
@@ -2659,13 +2855,20 @@
           "id": {
             "type": "string"
           },
-          "clabe": {
+          "clabeLast4": {
             "type": "string",
-            "pattern": "^([0-9]{18})?$",
-            "description": "Normalized 18-digit CLABE. Empty string only for records created before the field existed.",
+            "pattern": "^([0-9]{4})?$",
+            "description": "Last 4 digits of the deposit CLABE. Empty when none on file. Full CLABE is write-only on create/PATCH.",
             "examples": [
-              "002010077777777771"
+              "7771"
             ]
+          },
+          "codiStatus": {
+            "$ref": "#/components/schemas/CodiStatus"
+          },
+          "bankReady": {
+            "type": "boolean",
+            "description": "True when a Pey bankAccountId is stored and codiStatus is ACTIVE."
           }
         }
       },
@@ -2820,7 +3023,9 @@
           "activity",
           "rfc",
           "taxpayerType",
-          "clabeLast4"
+          "clabeLast4",
+          "codiStatus",
+          "bankReady"
         ],
         "properties": {
           "name": {
@@ -2856,6 +3061,13 @@
             ],
             "pattern": "^[0-9]{4}$",
             "description": "Last 4 digits of the deposit CLABE. Null for records created before CLABE was required (then `clabe` is in onboarding.pendingFields)."
+          },
+          "codiStatus": {
+            "$ref": "#/components/schemas/CodiStatus"
+          },
+          "bankReady": {
+            "type": "boolean",
+            "description": "True when the contractor can receive charges through Pey."
           }
         }
       },
@@ -4218,6 +4430,10 @@
     }
   },
   "tags": [
+    {
+      "name": "platform",
+      "description": "Sondas técnicas del proceso (liveness). No son dominios de negocio."
+    },
     {
       "name": "auth",
       "description": "Registro de cuentas, inicio de sesión, verificación por correo y recuperación de PIN."

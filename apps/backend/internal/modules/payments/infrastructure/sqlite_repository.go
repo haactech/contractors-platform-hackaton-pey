@@ -3,6 +3,7 @@ package infrastructure
 import (
 	"contractors-platform/backend/internal/modules/payments/domain"
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -107,6 +108,61 @@ func (repository *SQLiteRepository) Save(payment domain.Payment) (domain.Payment
 		payment.CodiQRString, payment.CodiQRImage, payment.ReminderCount, payment.CreatedAt)
 	if err != nil {
 		return domain.Payment{}, err
+	}
+	return payment, nil
+}
+
+const paymentSelect = `SELECT id, vendor_id, bank_account_id, client_id, client_name, client_phone, client_email,
+	concept, amount_cents, due_date, method, status, pey_id, payment_link_url,
+	codi_qr_string, codi_qr_image, reminder_count, created_at FROM payments`
+
+// Find lee un cobro por id.
+func (repository *SQLiteRepository) Find(id string) (domain.Payment, bool, error) {
+	payment, err := scanPayment(repository.db.QueryRow(paymentSelect+` WHERE id = ?`, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.Payment{}, false, nil
+	}
+	if err != nil {
+		return domain.Payment{}, false, err
+	}
+	return payment, true, nil
+}
+
+// ListByVendor lista los cobros de un vendedor, más recientes primero.
+func (repository *SQLiteRepository) ListByVendor(vendorID string) ([]domain.Payment, error) {
+	rows, err := repository.db.Query(paymentSelect+` WHERE vendor_id = ? ORDER BY created_at DESC, id DESC`, vendorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	payments := []domain.Payment{}
+	for rows.Next() {
+		payment, err := scanPayment(rows)
+		if err != nil {
+			return nil, err
+		}
+		payments = append(payments, payment)
+	}
+	return payments, rows.Err()
+}
+
+type paymentScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanPayment(row paymentScanner) (domain.Payment, error) {
+	var payment domain.Payment
+	var due sql.NullString
+	err := row.Scan(
+		&payment.ID, &payment.VendorID, &payment.BankAccountID, &payment.ClientID, &payment.ClientName, &payment.ClientPhone, &payment.ClientEmail,
+		&payment.Concept, &payment.AmountCents, &due, &payment.Method, &payment.Status, &payment.PeyID, &payment.PaymentLinkURL,
+		&payment.CodiQRString, &payment.CodiQRImage, &payment.ReminderCount, &payment.CreatedAt,
+	)
+	if err != nil {
+		return domain.Payment{}, err
+	}
+	if due.Valid {
+		payment.DueDate = due.String
 	}
 	return payment, nil
 }

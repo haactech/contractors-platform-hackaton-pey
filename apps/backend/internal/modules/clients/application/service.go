@@ -94,6 +94,11 @@ func (service *Service) Find(vendorID, clientID string) (domain.Client, bool, er
 	return service.repository.Find(vendorID, clientID)
 }
 
+// DeleteByVendor removes every client of that vendor (onboarding claim rollback).
+func (service *Service) DeleteByVendor(vendorID string) error {
+	return service.repository.DeleteByVendor(vendorID)
+}
+
 // First devuelve el cliente más antiguo del vendedor.
 func (service *Service) First(vendorID string) (domain.Client, bool, error) {
 	clients, err := service.repository.List(vendorID)

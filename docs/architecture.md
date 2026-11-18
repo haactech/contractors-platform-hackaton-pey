@@ -1,6 +1,6 @@
 # Arquitectura por módulos y dominio
 
-El punto de partida es un monolito modular: una API desplegable y una aplicación web. Los módulos representan capacidades del negocio, no categorías técnicas globales. `onboarding` en Go y `contractors` en frontend son los primeros ejemplos; futuros dominios, como proyectos o contratos, tendrán sus propias carpetas cuando existan requisitos reales.
+El punto de partida es un monolito modular: una API desplegable y una aplicación web. Los módulos representan capacidades del negocio, no categorías técnicas globales. `accounts`, `onboarding`, `clients`, `payments` y `dashboard` en Go, y `auth`, `onboarding` y `dashboard` en frontend, son los dominios actuales; futuros dominios tendrán sus propias carpetas cuando existan requisitos reales.
 
 ## Dependencias
 
@@ -23,7 +23,7 @@ Estas reglas son convenciones de revisión; todavía no hay un verificador autom
 
 ## Frontend y backend
 
-Los módulos de ambas aplicaciones comparten vocabulario, pero sus modelos evolucionan de forma independiente. El frontend mantiene modelos para las necesidades de la interfaz y usa un gateway para obtener datos. El backend concentra las reglas de negocio y los casos de uso. El módulo web de contratistas resuelve una consulta y onboarding incorpora una escritura; agrega casos de uso en `application` cuando aparezcan transformaciones o flujos de negocio.
+Los módulos de ambas aplicaciones comparten vocabulario, pero sus modelos evolucionan de forma independiente. El frontend mantiene modelos para las necesidades de la interfaz y usa un gateway para obtener datos. El backend concentra las reglas de negocio y los casos de uso. Cada módulo web habla con su API vía gateway; agrega casos de uso en `application` cuando aparezcan transformaciones o flujos de negocio.
 
 `@platform/contracts` contiene exclusivamente declaraciones TypeScript de DTO de la API. Los adaptadores convierten estos DTO a modelos locales. No compartir entidades, repositorios, secretos ni código del servidor con el navegador. Los tipos no validan datos en tiempo de ejecución: al incorporar endpoints de escritura, agregar esquemas de validación HTTP y reglas en el dominio.
 

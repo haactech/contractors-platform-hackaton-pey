@@ -39,6 +39,7 @@ func (repository *memoryUsers) HasCLABE(string) (bool, error) { return false, ni
 func (repository *memoryUsers) HasOtherCLABE(string, string) (bool, error) { return false, nil }
 
 func (repository *memoryUsers) RecordBankAccount(user domain.User) (domain.User, error) {
+	repository.users[user.ID] = user
 	return user, nil
 }
 
@@ -55,6 +56,38 @@ func (failingClients) SaveFirst(string, domain.Customer) error {
 
 func (failingClients) First(string) (domain.Customer, bool, error) {
 	return domain.Customer{}, false, nil
+}
+
+func (failingClients) RemoveForVendor(string) error { return nil }
+
+type memoryClients struct {
+	byVendor map[string]domain.Customer
+}
+
+func (store *memoryClients) SaveFirst(vendorID string, customer domain.Customer) error {
+	if store.byVendor == nil {
+		store.byVendor = map[string]domain.Customer{}
+	}
+	store.byVendor[vendorID] = customer
+	return nil
+}
+
+func (store *memoryClients) First(vendorID string) (domain.Customer, bool, error) {
+	customer, found := store.byVendor[vendorID]
+	return customer, found, nil
+}
+
+func (store *memoryClients) RemoveForVendor(vendorID string) error {
+	delete(store.byVendor, vendorID)
+	return nil
+}
+
+type failingOwners struct{}
+
+func (failingOwners) Claimable(context.Context) error { return nil }
+
+func (failingOwners) Claim(context.Context, string) error {
+	return errors.New("claim failed")
 }
 
 type countingBanks struct{ calls int }
@@ -84,5 +117,26 @@ func TestClientStoreFailureRemovesTheVendor(t *testing.T) {
 	}
 	if _, found := repository.Find("vendor-1"); found {
 		t.Fatal("vendor remained after the client store failed")
+	}
+}
+
+func TestClaimFailureRemovesVendorAndFirstClient(t *testing.T) {
+	repository := &memoryUsers{users: map[string]domain.User{}}
+	clients := &memoryClients{}
+	banks := &countingBanks{}
+	input := domain.Input{
+		Name: "Ana", Profession: "Electrician",
+		Client:       domain.Client{Name: "Luis", Phone: "5551234567", Email: "luis@example.com"},
+		BusinessName: "Electrical Services", BusinessActivity: "Electrical installations", RFC: "AAA010101AAA", CLABE: "002010077777777771",
+	}
+	_, _, err := NewRegisterUser(repository, banks, failingOwners{}, clients).Create(context.Background(), input)
+	if err == nil || banks.calls != 0 {
+		t.Fatalf("err=%v calls=%d", err, banks.calls)
+	}
+	if _, found := repository.Find("vendor-1"); found {
+		t.Fatal("vendor remained after claim failure")
+	}
+	if _, found, _ := clients.First("vendor-1"); found {
+		t.Fatal("first client remained after claim failure")
 	}
 }

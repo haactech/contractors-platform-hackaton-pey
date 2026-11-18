@@ -1,4 +1,4 @@
-# Integración con `api.pey.mx` (Payment Links y CoDi QR)
+# Integración con `api.pey.mx` (Payment Links, CoDi QR y CoDi Push)
 
 Referencia técnica y operativa para el módulo de pagos del backend en Go (`apps/backend`) y los contratos compartidos (`packages/contracts`).
 
@@ -12,8 +12,17 @@ Todas las llamadas hacia `https://api.pey.mx` se realizan exclusivamente desde e
 | :--- | :--- | :--- | :--- |
 | **`PAYMENT_LINK`** | `POST /payment-link/create`<br>`POST /payment-link/update`<br>`GET /payment-link/:id` | URL alojada por `pey` compartida por WhatsApp, correo electrónico o mensaje. | Cobros remotos, mensualidades, anticipos y recordatorios de pago (`MSJ Reminders`). |
 | **`CODI_QR`** | `POST /codi/qr` | Devuelve `id` (IDC), `qrString` y `qrImage` opcional para escanear desde la app bancaria. | Cobros presenciales al finalizar una sesión, clase o servicio. |
+| **`CODI_PUSH`** | `POST /codi/pn` | Notificación push CoDi al teléfono del cliente (sin QR ni enlace). | Cobro directo al celular del cliente registrado (máx. `$1,000,000.00`). |
 
 > **Regla monetaria:** El dominio y los contratos internos operan en **centavos enteros** (`amountCents`, por ejemplo `80000` para `$800.00 MXN`). Únicamente el adaptador HTTP de infraestructura hacia `api.pey.mx` convierte centavos a pesos (`amount = amountCents / 100`).
+
+### Teléfonos (onboarding vs dashboard vs CoDi Push)
+
+| Superficie | Regla | Notas |
+| :--- | :--- | :--- |
+| Onboarding `client.phone` | 7–15 dígitos (+, espacios, `()-` opcionales) | Primer cliente del alta. |
+| Dashboard `VendorClientWrite.phone` | Exactamente **10** dígitos MX | Se normaliza quitando `+52` / `52`. |
+| `CODI_PUSH` | 10 dígitos nacionales tras quitar `52` | Usa el teléfono **guardado** del cliente; si no alcanza 10, `422` en `clientPhone`. |
 
 ---
 
@@ -51,13 +60,26 @@ Todas las llamadas hacia `https://api.pey.mx` se realizan exclusivamente desde e
   ```
 - **Nota de conciliación:** Cancelar un cobro localmente no invalida un QR ya emitido ante Banxico. Si llega un webhook de pago para un cobro en estado `EXPIRED` o `CANCELLED`, el sistema debe transicionarlo a `SETTLED`.
 
-### 2.3 Cuentas bancarias destino (`/bank-account`)
+### 2.3 CoDi Push / notificación (`POST https://api.pey.mx/codi/pn`)
 
-- `POST https://api.pey.mx/bank-account`: registra la CLABE de 18 dígitos del contratista/profesional (`alias`, `name`, `clabe`, `entity: "PERSON" | "BUSINESS"`, `taxId` opcional).
+- **Cuerpo de petición (JSON) que arma el backend:**
+  - `amount` (`number`): importe en **pesos** (`> 0`, tope de plataforma `$1,000,000.00` → `amountCents <= 100_000_000`).
+  - `phoneNumber` (`string`): **10 dígitos** nacionales del cliente (sin `+52`).
+  - `concept` (`string`): `1..40` caracteres.
+  - `bankAccountId` (`string`): ULID de la cuenta destino del vendedor (`ACTIVE`).
+  - `expiration` (`number`): segundos de vigencia (plataforma: `360`).
+  - `metadata` (`Record<string, string>`, opcional): incluye `paymentId` y `concept`.
+- **Respuesta usable:** debe traer `transactionId` (no `id` de QR). El cobro local guarda ese valor como `peyId` y **no** expone link ni QR.
+- **Prérequisitos:** `bankReady` del vendedor y cliente con teléfono reducible a 10 dígitos MX. Sin eso → `422` (cuenta o `clientPhone`), sin llamar a Pey.
+
+### 2.4 Cuentas bancarias destino (`/bank-account`)
+
+- `POST https://api.pey.mx/bank-account`: registra la CLABE de 18 dígitos del contratista/profesional (`alias`, `name`, `clabe`, `entity: "PERSON" | "BUSINESS"`, `taxId` opcional). La plataforma envía `taxId` con el RFC cuando el alta lo tiene.
 - `GET https://api.pey.mx/bank-account/:id`: consulta el estado de activación ante Banxico (`codiStatus`: `"PENDING"` | `"PROCESSING"` | `"ACTIVE"` | `"ERROR"`).
-- **Seguridad de datos:** No persistir la CLABE completa de 18 dígitos en la base de datos de la plataforma; conservar únicamente `peyBankAccountId` y los últimos 4 dígitos (`clabeLast4`).
+- **Soft-fail en onboarding:** si Pey falla o no hay `PEY_API_KEY`, el alta local responde `201` igual. La respuesta pública incluye `clabeLast4`, `codiStatus` (`not_registered` si no hubo id) y `bankReady` (solo `true` con id + `ACTIVE`). Reintento: `POST /api/onboarding/{id}/bank-account/retry` (o `PATCH` con CLABE presente y sin `bankAccountId`).
+- **Seguridad de datos:** la API de lectura no expone la CLABE completa ni el `bankAccountId`; solo `clabeLast4` y el estado. (Persistencia de CLABE completa → migración a last4 pendiente.)
 
-### 2.4 Webhooks (`standardwebhooks`)
+### 2.5 Webhooks (`standardwebhooks`)
 
 - Todas las notificaciones de pago recibidas desde `pey` se verifican con el secreto `PEY_WEBHOOK_SECRET` siguiendo la especificación `standardwebhooks`.
 - El encabezado `webhook-id` actúa como llave de idempotencia obligatoria para evitar procesar dos veces la misma notificación.

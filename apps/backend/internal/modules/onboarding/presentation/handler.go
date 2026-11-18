@@ -13,11 +13,17 @@ import (
 type Handler struct {
 	register *application.RegisterUser
 	update   *application.UpdateUser
+	retry    *application.RetryBankRegistration
 	read     *application.ReadUser
 }
 
-func New(register *application.RegisterUser, update *application.UpdateUser, read *application.ReadUser) *Handler {
-	return &Handler{register: register, update: update, read: read}
+func New(
+	register *application.RegisterUser,
+	update *application.UpdateUser,
+	retry *application.RetryBankRegistration,
+	read *application.ReadUser,
+) *Handler {
+	return &Handler{register: register, update: update, retry: retry, read: read}
 }
 
 func writeJSON(writer http.ResponseWriter, status int, payload any) {
@@ -98,6 +104,23 @@ func (handler *Handler) Find(writer http.ResponseWriter, request *http.Request) 
 	record, found := handler.read.Find(request.PathValue("id"))
 	if !found {
 		writeJSON(writer, 404, map[string]string{"message": "No se encontró el registro."})
+		return
+	}
+	writeJSON(writer, 200, record)
+}
+
+func (handler *Handler) RetryBank(writer http.ResponseWriter, request *http.Request) {
+	record, validation, err := handler.retry.Retry(request.Context(), request.PathValue("id"))
+	if len(validation) > 0 {
+		writeJSON(writer, 422, map[string]any{"message": "Revisa los campos del formulario.", "errors": validation})
+		return
+	}
+	if errors.Is(err, domain.ErrNotFound) {
+		writeJSON(writer, 404, map[string]string{"message": "No se encontró el registro."})
+		return
+	}
+	if err != nil {
+		writeJSON(writer, 500, map[string]string{"message": "No fue posible registrar la cuenta bancaria."})
 		return
 	}
 	writeJSON(writer, 200, record)

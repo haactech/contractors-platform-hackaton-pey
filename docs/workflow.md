@@ -2,9 +2,10 @@
 
 Este documento define el flujo completo de la plataforma en tres etapas (`Stage 1`, `Stage 2` y `Stage 3`), alineado con la [arquitectura modular](architecture.md) del monorepo (`apps/backend`, `apps/frontend` y `packages/contracts`).
 
-En esta iteración se soportan dos modalidades de cobro en `api.pey.mx`:
+En esta iteración se soportan tres modalidades de cobro en `api.pey.mx`:
 - **`PAYMENT_LINK`** (`POST /payment-link/create`): enlace de cobro alojado para enviar por WhatsApp, correo electrónico o copiar enlace.
 - **`CODI_QR`** (`POST /codi/qr`): código QR CoDi dinámico para cobro presencial desde pantalla.
+- **`CODI_PUSH`** (`POST /codi/pn`): push CoDi al teléfono de 10 dígitos del cliente guardado (sin QR ni enlace).
 
 ---
 
@@ -13,12 +14,15 @@ En esta iteración se soportan dos modalidades de cobro en `api.pey.mx`:
 ```mermaid
 flowchart TD
     subgraph S1["STAGE 1 · Welcome & Onboarding (implementado en /api/onboarding)"]
-        W["Welcome Screen\nPropuesta de valor (0% comisión CoDi)"] --> OB_FORM["Formulario de Onboarding:\n• Nombre y Profesión\n• Negocio, Giro y RFC / Régimen Fiscal\n• 1.er Cliente (Nombre, Teléfono, Email)"]
+        W["Welcome Screen\nPropuesta de valor (0% comisión CoDi)"] -->         OB_FORM["Formulario de Onboarding:\n• Nombre, Profesión y CLABE\n• Negocio, Giro y RFC / Régimen Fiscal\n• 1.er Cliente (Nombre, Teléfono, Email)"]
         OB_FORM --> VALID{"¿Validación HTTP 422 / 201?"}
         VALID -- "Error 422" --> ERR["Muestra errores por campo en español"]
         ERR --> OB_FORM
-        VALID -- "201 Created" --> PEY_BA["Registro de cuenta destino en pey\n(POST /bank-account → bankAccountId + clabeLast4)"]
-        PEY_BA --> FIRST_CHARGE["Guía en Dashboard: Haz tu 1.er cobro"]
+        VALID -- "201 Created" --> PEY_BA["Pey POST /bank-account (soft-fail OK)\nRespuesta: clabeLast4 + codiStatus + bankReady"]
+        PEY_BA --> READY{"¿bankReady?"}
+        READY -- "No" --> RETRY["POST …/bank-account/retry\no espera ACTIVE"]
+        RETRY --> READY
+        READY -- "Sí" --> FIRST_CHARGE["Guía en Dashboard: Haz tu 1.er cobro"]
     end
 
     subgraph S2["STAGE 2 · Creación y entrega del cobro (Payments)"]
@@ -31,11 +35,15 @@ flowchart TD
 
         METHOD -- "CODI_QR" --> QR["POST /codi/qr\nGenera QR CoDi dinámico"]
         QR --> QR_UI["Muestra QR en pantalla\npara escaneo presencial"]
+
+        METHOD -- "CODI_PUSH" --> PN["POST /codi/pn\nPush al teléfono 10 dígitos del cliente"]
+        PN --> PN_OK["Cobro PENDING sin link/QR\n(requiere teléfono MX usable)"]
     end
 
     subgraph S3["STAGE 3 · Dashboard, conciliación y recordatorios"]
         LNK_SEND --> PENDING["Cobro en estado PENDING_PAYMENT\n• Fila en tabla con badge 'Pendiente'\n• Suma al saldo pendiente del cliente (Per Client Balance)"]
         QR_UI --> PENDING
+        PN_OK --> PENDING
 
         PENDING --> PAID{"¿Pago completado?"}
         PAID -- "Webhook firmado de pey" --> WH["POST /api/webhooks/pey\n(standardwebhooks)"]
@@ -56,16 +64,17 @@ sequenceDiagram
     actor P as Contratista / Profesional
     participant Web as Frontend (React + Vite)
     participant API as Backend (Go net/http)
-    participant Pey as api.pey.mx (Payment Link / CoDi QR)
+    participant Pey as api.pey.mx (Payment Link / CoDi QR / CoDi Push)
     actor C as Cliente
 
-    Note over P,C: Flujo A: Creación del cobro (Payment Link o CoDi QR)
-    P->>Web: Selecciona cliente, concepto y monto; elige PAYMENT_LINK o CODI_QR
+    Note over P,C: Flujo A: Creación del cobro (Payment Link, CoDi QR o CoDi Push)
+    P->>Web: Selecciona cliente, concepto y monto; elige PAYMENT_LINK, CODI_QR o CODI_PUSH
     Web->>API: POST /api/payments (CreatePaymentIntentRequest)
-    API->>Pey: POST /payment-link/create o POST /codi/qr (monto convertido a pesos)
-    Pey-->>API: Devuelve paymentLinkUrl o qrString + id
+    API->>Pey: POST /payment-link/create, /codi/qr o /codi/pn (monto en pesos)
+    Pey-->>API: Devuelve paymentLinkUrl, qrString+id, o transactionId
     API-->>Web: 201 PaymentIntentDto (status = PENDING_PAYMENT)
-    Web->>C: Comparte link por WhatsApp/correo o presenta QR en pantalla
+    Web->>C: Comparte link, presenta QR, o el cliente recibe el push CoDi
+    Note over API,Pey: CODI_PUSH exige bankReady + teléfono guardado reducible a 10 dígitos MX
 
     Note over P,C: Flujo B: Recordatorio de pago (MSJ Reminder)
     P->>Web: Filtra por "Pendientes" y pulsa "Recordar"
@@ -86,7 +95,7 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> PENDING_PAYMENT: Crea cobro (PAYMENT_LINK o CODI_QR)
+    [*] --> PENDING_PAYMENT: Crea cobro (PAYMENT_LINK, CODI_QR o CODI_PUSH)
     PENDING_PAYMENT --> PENDING_PAYMENT: Envía recordatorio (MSJ Reminder)
     PENDING_PAYMENT --> SETTLED: Webhook pey (monto íntegro)
     PENDING_PAYMENT --> UNDERPAID: Webhook pey (monto parcial)

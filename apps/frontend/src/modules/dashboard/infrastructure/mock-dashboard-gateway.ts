@@ -213,6 +213,8 @@ const MOCK_PROFILE: DashboardProfileDto = {
     taxRegime: 'RESICO',
     taxpayerType: 'individual',
     clabeLast4: '7771',
+    codiStatus: 'ACTIVE',
+    bankReady: true,
   },
   firstCustomer: { name: 'Mateo Hernández', phone: '5541238910', email: 'mateo@ejemplo.mx' },
   onboarding: { status: 'complete', pendingFields: [] },

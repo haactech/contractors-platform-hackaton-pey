@@ -32,6 +32,8 @@ type Directory interface {
 	First(vendorID string) (Record, bool, error)
 	Find(vendorID, clientID string) (Record, bool, error)
 	List(vendorID string) ([]Record, error)
+	// DeleteByVendor removes clients for onboarding claim rollback.
+	DeleteByVendor(vendorID string) error
 }
 
 // Repository guarda los clientes. Vendors solo indica si el vendedor existe.
@@ -58,6 +60,10 @@ func Register(mux *http.ServeMux, repository Repository, vendors Vendors, guard 
 
 func (facade facade) SaveFirst(vendorID, name, phone, email string) error {
 	return facade.service.SaveFirst(vendorID, name, phone, email)
+}
+
+func (facade facade) DeleteByVendor(vendorID string) error {
+	return facade.service.DeleteByVendor(vendorID)
 }
 
 func (facade facade) First(vendorID string) (Record, bool, error) {

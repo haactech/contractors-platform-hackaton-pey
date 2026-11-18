@@ -1,16 +1,13 @@
 /** Transport DTOs only. No domain entities or business logic. */
-export interface ContractorDto {
-  id: string;
-  name: string;
-  specialty: string;
-}
 
-export interface ListContractorsResponse {
-  contractors: ContractorDto[];
+/** GET /api/health — liveness probe. */
+export interface HealthResponse {
+  status: 'ok';
 }
 
 export interface ClientDto {
   name: string;
+  /** Onboarding first client: 7–15 digits. CODI_PUSH needs 10 MX digits after stripping 52. */
   phone: string;
   email: string;
 }
@@ -37,6 +34,14 @@ export interface UpdateOnboardingProfileRequest {
   clabe?: string;
 }
 
+/** Pey bank activation status stored after onboarding register (or not_registered). */
+export type CodiStatusDto =
+  | 'not_registered'
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'ACTIVE'
+  | 'ERROR';
+
 export interface OnboardingDto {
   id: string;
   name: string;
@@ -46,7 +51,11 @@ export interface OnboardingDto {
   businessName: string;
   businessActivity: string;
   rfc: string;
-  clabe: string;
+  /** Last 4 digits of the deposit CLABE; empty when none on file. Full CLABE is write-only. */
+  clabeLast4: string;
+  codiStatus: CodiStatusDto;
+  /** True when Pey bankAccountId is set and codiStatus is ACTIVE. */
+  bankReady: boolean;
 }
 
 export type PaymentMethodDto = "PAYMENT_LINK" | "CODI_QR" | "CODI_PUSH";
@@ -70,6 +79,25 @@ export interface VendorClientDto {
   fiscalAddress?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Body for POST/PATCH /api/contractors/{contractorId}/clients.
+ * Dashboard writes require a 10-digit Mexican phone (leading +52 is stripped).
+ * Onboarding's nested first client still allows 7–15 digits (see ClientDto.phone);
+ * CODI_PUSH needs a 10-digit national number after stripping 52.
+ */
+export interface VendorClientWriteDto {
+  entityType: "individual" | "company";
+  name: string;
+  phone: string;
+  email: string;
+  legalName?: string;
+  tradeName?: string;
+  rfc?: string;
+  activity?: string;
+  taxRegime?: string;
+  fiscalAddress?: string;
 }
 
 export type PaymentStatusDto =
@@ -96,6 +124,8 @@ export interface CreatePaymentIntentRequest {
 export interface PaymentIntentDto {
   id: string;
   onboardingId: string;
+  /** Present when the charge was matched to a stored client. */
+  clientId?: string;
   clientName: string;
   clientPhone?: string;
   clientEmail?: string;
@@ -113,6 +143,9 @@ export interface PaymentIntentDto {
   createdAt: string;
   settledAt?: string;
 }
+
+/** Response of GET /api/contractors/{contractorId}/payments (newest first). */
+export type ListPaymentsResponse = PaymentIntentDto[];
 
 export interface ClientBalanceDto {
   clientName: string;
@@ -248,6 +281,8 @@ export interface DashboardProfileDto {
     taxpayerType: TaxpayerType;
     /** Last 4 digits of the deposit CLABE; null when not captured yet. */
     clabeLast4: string | null;
+    codiStatus: CodiStatusDto;
+    bankReady: boolean;
   };
   /** Customer captured in onboarding (`client`): receives the first charge. */
   firstCustomer: { name: string; phone: string; email: string };

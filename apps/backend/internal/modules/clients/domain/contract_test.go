@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"contractors-platform/backend/internal/modules/clients/definitions"
+	"testing"
+)
 
 func TestCompanyWithoutLegalNameIsRejected(t *testing.T) {
 	_, fieldErrors := BuildDashboard("vendor-1", Input{
@@ -45,5 +48,24 @@ func TestSecondDashboardPhoneCollidesOnTheSameKey(t *testing.T) {
 	second, fieldErrors := BuildDashboard("vendor-1", Input{EntityType: "individual", Name: "Ana", Phone: "55 5123 4567", Email: "ana@example.com"})
 	if len(fieldErrors) != 0 || first.PhoneKey == "" || first.PhoneKey != second.PhoneKey {
 		t.Fatalf("keys: %s %s %v", first.PhoneKey, second.PhoneKey, fieldErrors)
+	}
+}
+
+func TestPhoneRulesDifferBetweenOnboardingAndDashboard(t *testing.T) {
+	first, fieldErrors := BuildFirst("vendor-1", "Luis", "5551234", "luis@example.com")
+	if len(fieldErrors) != 0 || first.Phone != "5551234" || first.PhoneKey != "5551234" {
+		t.Fatalf("onboarding 7 digits: %+v %v", first, fieldErrors)
+	}
+	_, fieldErrors = BuildFirst("vendor-1", "Luis", "123", "luis@example.com")
+	if fieldErrors[definitions.FieldPhone] != definitions.MessagePhoneOnboarding {
+		t.Fatalf("onboarding short phone: %v", fieldErrors)
+	}
+	_, fieldErrors = BuildDashboard("vendor-1", Input{EntityType: "individual", Name: "Ana", Phone: "5551234", Email: "ana@example.com"})
+	if fieldErrors[definitions.FieldPhone] != definitions.MessagePhone {
+		t.Fatalf("dashboard short phone: %v", fieldErrors)
+	}
+	dashboard, fieldErrors := BuildDashboard("vendor-1", Input{EntityType: "individual", Name: "Ana", Phone: "+52 555 123 4567", Email: "ana@example.com"})
+	if len(fieldErrors) != 0 || dashboard.Phone != "5551234567" || dashboard.PhoneKey != "5551234567" {
+		t.Fatalf("dashboard normalize: %+v %v", dashboard, fieldErrors)
 	}
 }

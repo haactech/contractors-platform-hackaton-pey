@@ -18,6 +18,8 @@ type BusinessResponse struct {
 	TaxRegime    *string             `json:"taxRegime,omitempty"`
 	TaxpayerType domain.TaxpayerType `json:"taxpayerType"`
 	ClabeLast4   *string             `json:"clabeLast4"`
+	CodiStatus   string              `json:"codiStatus"`
+	BankReady    bool                `json:"bankReady"`
 }
 
 type FirstCustomerResponse struct {
@@ -43,6 +45,8 @@ func toProfileResponse(profile domain.Profile) ProfileResponse {
 			TaxRegime:    profile.Business.TaxRegime,
 			TaxpayerType: profile.Business.TaxpayerType,
 			ClabeLast4:   profile.Business.ClabeLast4,
+			CodiStatus:   profile.Business.CodiStatus,
+			BankReady:    profile.Business.BankReady,
 		},
 		FirstCustomer: FirstCustomerResponse{
 			Name:  profile.FirstCustomer.Name,

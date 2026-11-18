@@ -62,7 +62,7 @@ export const httpPaymentsGateway: Pick<PaymentsGateway, 'createCharge'> = {
     }
     const intent: PaymentIntentDto = await response.json();
     return {
-      charge: toCharge(intent, input.customerId, input.dueDate),
+      charge: toCharge(intent, intent.clientId ?? input.customerId, input.dueDate),
       method: intent.method,
       ...(intent.paymentLinkUrl ? { paymentLinkUrl: intent.paymentLinkUrl } : {}),
       ...(intent.codiQrString ? { codiQrString: intent.codiQrString } : {}),

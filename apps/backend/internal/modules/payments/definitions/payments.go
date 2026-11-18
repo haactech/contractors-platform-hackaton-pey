@@ -25,8 +25,10 @@ const (
 	MessageDueDate       = "Elige una fecha válida."
 	MessageClientMissing = "Este cliente no está registrado."
 	MessageAccount       = "La cuenta todavía no puede recibir CoDi."
-	MessageVendorMissing = "No se encontró el vendedor."
-	MessageSave          = "No fue posible crear el cobro."
+	MessageVendorMissing  = "No se encontró el vendedor."
+	MessagePaymentMissing = "No se encontró el cobro."
+	MessageLinks          = "Configura las URLs HTTPS de retorno del cobro."
+	MessageSave           = "No fue posible crear el cobro."
 	MessagePey           = "No fue posible crear el cobro en Pey."
 	MessageReview        = "Revisa los campos del formulario."
 	MessageJSON          = "El JSON es inválido o contiene campos desconocidos."
@@ -64,9 +66,12 @@ const (
 	PeyPathCodiQR         = "/codi/qr"
 	PeyPathCodiPush       = "/codi/pn"
 	ConceptMaxRunes       = 40
-	PhoneMinDigits        = 7
-	PhoneMaxDigits        = 15
-	PushPhoneDigits       = 10
+	// PhoneMin/MaxDigits validate optional clientPhone on create (match / lookup).
+	PhoneMinDigits = 7
+	PhoneMaxDigits = 15
+	// PushPhoneDigits is the Mexican national length sent to Pey POST /codi/pn.
+	// Stored phones may include +52; pushPhone strips country code then requires this length.
+	PushPhoneDigits = 10
 	QRExpirationSeconds   = 360
 	PushExpirationSeconds = 360
 	PushMaxCents          = 100_000_000

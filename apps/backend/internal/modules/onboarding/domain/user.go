@@ -66,4 +66,6 @@ type Repository interface {
 type ClientStore interface {
 	SaveFirst(vendorID string, customer Customer) error
 	First(vendorID string) (Customer, bool, error)
+	// RemoveForVendor deletes clients created for that vendor (claim rollback).
+	RemoveForVendor(vendorID string) error
 }

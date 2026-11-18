@@ -41,6 +41,10 @@ func main() {
 
 	var banks domain.BankRegistrar = infrastructure.NewUnavailablePey()
 	var collector paymentsdomain.Collector = paymentsinfra.UnavailableCollector{}
+	links := paymentsdomain.Links{
+		Success: os.Getenv("PAYMENT_SUCCESS_URL"),
+		Back:    os.Getenv("PAYMENT_BACK_URL"),
+	}
 	if key := os.Getenv("PEY_API_KEY"); key != "" {
 		peyURL := os.Getenv("PEY_API_URL")
 		if peyURL == "" {
@@ -49,6 +53,9 @@ func main() {
 		client := infrastructure.NewPeyClient(peyURL, key)
 		banks = client
 		collector = client
+		if !paymentsdomain.LinksReady(links) {
+			log.Fatal("PAYMENT_SUCCESS_URL and PAYMENT_BACK_URL must be HTTPS when PEY_API_KEY is set")
+		}
 	}
 	policy, warnings := accounts.PolicyFromEnv(os.Getenv)
 	log.Printf(
@@ -140,11 +147,8 @@ func main() {
 		Payments:       paymentsRepo,
 		PaymentVendors: paymentVendors,
 		Collector:      collector,
-		Links: paymentsdomain.Links{
-			Success: os.Getenv("PAYMENT_SUCCESS_URL"),
-			Back:    os.Getenv("PAYMENT_BACK_URL"),
-		},
-		Banks:  banks,
+		Links:          links,
+		Banks:          banks,
 		Hasher: accounts.NewPBKDF2Hasher(0),
 		Mailer: mailer,
 		Policy: policy,

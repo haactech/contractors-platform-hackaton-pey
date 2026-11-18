@@ -27,7 +27,9 @@ func (source *OnboardingSource) FindContractor(_ context.Context, id string) (do
 		BusinessActivity: record.BusinessActivity,
 		RFC:              record.RFC,
 		TaxRegime:        record.TaxRegime,
-		CLABE:            record.CLABE,
+		ClabeLast4:       record.ClabeLast4,
+		CodiStatus:       record.CodiStatus,
+		BankReady:        record.BankReady,
 		FirstCustomer:    domain.FirstCustomer{Name: record.Client.Name, Phone: record.Client.Phone, Email: record.Client.Email},
 	}, nil
 }

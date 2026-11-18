@@ -15,11 +15,17 @@ import (
 	"contractors-platform/backend/internal/modules/payments"
 	paymentsdomain "contractors-platform/backend/internal/modules/payments/domain"
 	paymentsinfra "contractors-platform/backend/internal/modules/payments/infrastructure"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"time"
 )
+
+// healthResponse is the public GET /api/health body (OpenAPI HealthResponse).
+type healthResponse struct {
+	Status string `json:"status"`
+}
 
 // Dependencies wires storage, external clients, and authentication policy into the API.
 type Dependencies struct {
@@ -83,11 +89,7 @@ func NewWith(deps Dependencies) (http.Handler, error) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", func(writer http.ResponseWriter, _ *http.Request) {
 		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"status":"ok"}`))
-	})
-	mux.HandleFunc("GET /api/contractors", func(writer http.ResponseWriter, _ *http.Request) {
-		writer.Header().Set("Content-Type", "application/json")
-		_, _ = writer.Write([]byte(`{"contractors":[]}`))
+		_ = json.NewEncoder(writer).Encode(healthResponse{Status: "ok"})
 	})
 
 	acc := accounts.Register(mux, accounts.Deps{
@@ -100,7 +102,7 @@ func NewWith(deps Dependencies) (http.Handler, error) {
 	directory := clients.Register(mux, deps.Clients, deps.ClientVendors, acc.Guard)
 	clientAdapter := onboardingClients{directory: directory}
 	onb := onboarding.Register(mux, deps.Onboardings, deps.Banks, acc.Owners, clientAdapter, acc.Guard)
-	payments.Register(mux, deps.Payments, deps.PaymentVendors, paymentsClients{directory: directory}, deps.Collector, deps.Links, acc.Guard)
+	_ = payments.Register(mux, deps.Payments, deps.PaymentVendors, paymentsClients{directory: directory}, deps.Collector, deps.Links, acc.Guard)
 	dashboard.Register(mux, dashboard.NewOnboardingSource(onb.Reader), acc.Guard)
 
 	if err := seedDemo(context.Background(), acc.Demo, onb.Seed); err != nil {
@@ -183,6 +185,10 @@ func (adapter onboardingClients) First(vendorID string) (onbdomain.Customer, boo
 		return onbdomain.Customer{}, false, err
 	}
 	return onbdomain.Customer{Name: record.Name, Phone: record.Phone, Email: record.Email}, true, nil
+}
+
+func (adapter onboardingClients) RemoveForVendor(vendorID string) error {
+	return adapter.directory.DeleteByVendor(vendorID)
 }
 
 type paymentsClients struct{ directory clients.Directory }

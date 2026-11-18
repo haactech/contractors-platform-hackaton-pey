@@ -36,6 +36,34 @@ func (repository *MemoryRepository) Save(payment domain.Payment) (domain.Payment
 	return payment, nil
 }
 
+// Find lee un cobro por id.
+func (repository *MemoryRepository) Find(id string) (domain.Payment, bool, error) {
+	repository.mutex.Lock()
+	defer repository.mutex.Unlock()
+	for _, payment := range repository.payments {
+		if payment.ID == id {
+			return payment, true, nil
+		}
+	}
+	return domain.Payment{}, false, nil
+}
+
+// ListByVendor lista los cobros de un vendedor, más recientes primero.
+func (repository *MemoryRepository) ListByVendor(vendorID string) ([]domain.Payment, error) {
+	repository.mutex.Lock()
+	defer repository.mutex.Unlock()
+	var listed []domain.Payment
+	for i := len(repository.payments) - 1; i >= 0; i-- {
+		if repository.payments[i].VendorID == vendorID {
+			listed = append(listed, repository.payments[i])
+		}
+	}
+	if listed == nil {
+		listed = []domain.Payment{}
+	}
+	return listed, nil
+}
+
 // Stored devuelve los cobros guardados, para las pruebas.
 func (repository *MemoryRepository) Stored() []domain.Payment {
 	repository.mutex.Lock()

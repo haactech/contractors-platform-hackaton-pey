@@ -55,9 +55,33 @@ func (repository *fakeRepository) Save(payment domain.Payment) (domain.Payment, 
 	if fieldErrors := domain.Allow(payment); len(fieldErrors) > 0 {
 		return domain.Payment{}, errors.New("rechazado")
 	}
-	payment.CreatedAt = "2026-11-14T00:00:00Z"
+	if payment.CreatedAt == "" {
+		payment.CreatedAt = "2026-11-14T00:00:00Z"
+	}
 	repository.saved = append(repository.saved, payment)
 	return payment, nil
+}
+
+func (repository *fakeRepository) Find(id string) (domain.Payment, bool, error) {
+	for _, payment := range repository.saved {
+		if payment.ID == id {
+			return payment, true, nil
+		}
+	}
+	return domain.Payment{}, false, nil
+}
+
+func (repository *fakeRepository) ListByVendor(vendorID string) ([]domain.Payment, error) {
+	var listed []domain.Payment
+	for i := len(repository.saved) - 1; i >= 0; i-- {
+		if repository.saved[i].VendorID == vendorID {
+			listed = append(listed, repository.saved[i])
+		}
+	}
+	if listed == nil {
+		listed = []domain.Payment{}
+	}
+	return listed, nil
 }
 
 type fakeCollector struct {
@@ -115,7 +139,7 @@ func TestCreateStoresTheRequestedAmountAndClient(t *testing.T) {
 	if saved.AmountCents != 15000 || saved.ClientName != "Luis" || saved.ClientEmail != "luis@example.com" || saved.ClientPhone != "+52 555 123 4567" || saved.ClientID != "client-1" || saved.BankAccountID != "bank-vendor-1" {
 		t.Fatalf("stored: %+v", saved)
 	}
-	if saved.VendorID != "vendor-1" || view.AmountCents != 15000 || view.CodiQRString != "QRDATA" {
+	if saved.VendorID != "vendor-1" || view.AmountCents != 15000 || view.CodiQRString != "QRDATA" || view.ClientID != "client-1" {
 		t.Fatalf("view: %+v", view)
 	}
 	var body map[string]any
@@ -186,9 +210,20 @@ func TestPeyErrorLeavesTheStoreEmpty(t *testing.T) {
 func TestLinkWithoutHTTPSDoesNotCallPey(t *testing.T) {
 	repository := &fakeRepository{}
 	collector := &fakeCollector{response: []byte(`{"id":"pey-link","url":"https://pay.example/abc"}`)}
-	_, _, err := NewCreatePayment(repository, vendors(), directory(), collector, domain.Links{}).Create(context.Background(), request(definitions.MethodPaymentLink))
-	if err == nil || errors.Is(err, domain.ErrCollector) || collector.calls != 0 || len(repository.saved) != 0 {
-		t.Fatalf("err=%v calls=%d saved=%d", err, collector.calls, len(repository.saved))
+	_, fieldErrors, err := NewCreatePayment(repository, vendors(), directory(), collector, domain.Links{}).Create(context.Background(), request(definitions.MethodPaymentLink))
+	if err != nil || fieldErrors[definitions.FieldMethod] != definitions.MessageLinks || collector.calls != 0 || len(repository.saved) != 0 {
+		t.Fatalf("err=%v fields=%v calls=%d saved=%d", err, fieldErrors, collector.calls, len(repository.saved))
+	}
+}
+
+func TestMissingBankAccountReturnsAccountMessage(t *testing.T) {
+	source := vendors()
+	source.accounts["vendor-1"] = domain.Account{}
+	repository := &fakeRepository{}
+	collector := &fakeCollector{}
+	_, fieldErrors, err := NewCreatePayment(repository, source, directory(), collector, domain.Links{}).Create(context.Background(), request(definitions.MethodCodiQR))
+	if err != nil || fieldErrors[definitions.FieldMethod] != definitions.MessageAccount || collector.calls != 0 || len(repository.saved) != 0 {
+		t.Fatalf("err=%v fields=%v calls=%d saved=%d", err, fieldErrors, collector.calls, len(repository.saved))
 	}
 }
 
