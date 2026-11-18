@@ -11,14 +11,15 @@ import (
 	"net/http"
 )
 
-// Handler publica el cobro que pide la pantalla.
+// Handler publica el cobro que pide la pantalla y la lectura de cobros guardados.
 type Handler struct {
 	create *application.CreatePayment
+	read   *application.ReadPayments
 }
 
-// New prepara el manejador con el acto de crear el cobro.
-func New(create *application.CreatePayment) *Handler {
-	return &Handler{create: create}
+// New prepara el manejador con crear y leer cobros.
+func New(create *application.CreatePayment, read *application.ReadPayments) *Handler {
+	return &Handler{create: create, read: read}
 }
 
 func writeJSON(writer http.ResponseWriter, status int, payload any) {
@@ -75,4 +76,28 @@ func (handler *Handler) Create(writer http.ResponseWriter, request *http.Request
 		return
 	}
 	writeJSON(writer, http.StatusCreated, view)
+}
+
+// List responde con los cobros del vendedor, más recientes primero.
+func (handler *Handler) List(writer http.ResponseWriter, request *http.Request) {
+	views, err := handler.read.ListByVendor(request.PathValue("contractorId"))
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"message": domain.SaveMessage()})
+		return
+	}
+	writeJSON(writer, http.StatusOK, views)
+}
+
+// Find responde con un cobro de ese vendedor.
+func (handler *Handler) Find(writer http.ResponseWriter, request *http.Request) {
+	view, found, err := handler.read.Find(request.PathValue("contractorId"), request.PathValue("paymentId"))
+	if err != nil {
+		writeJSON(writer, http.StatusInternalServerError, map[string]string{"message": domain.SaveMessage()})
+		return
+	}
+	if !found {
+		writeJSON(writer, http.StatusNotFound, map[string]string{"message": domain.PaymentMissingMessage()})
+		return
+	}
+	writeJSON(writer, http.StatusOK, view)
 }

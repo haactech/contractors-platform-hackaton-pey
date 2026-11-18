@@ -90,6 +90,18 @@ func (repository *MemoryRepository) Find(vendorID, clientID string) (domain.Clie
 	return client, true, nil
 }
 
+// DeleteByVendor elimina todos los clientes de ese vendedor.
+func (repository *MemoryRepository) DeleteByVendor(vendorID string) error {
+	repository.mutex.Lock()
+	defer repository.mutex.Unlock()
+	for id, client := range repository.records {
+		if client.VendorID == vendorID {
+			delete(repository.records, id)
+		}
+	}
+	return nil
+}
+
 func (repository *MemoryRepository) phoneTaken(vendorID, phoneKey, exceptID string) bool {
 	if phoneKey == "" {
 		return false

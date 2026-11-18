@@ -204,8 +204,12 @@ func TestCreateAndRetrieve(t *testing.T) {
 			}
 			var result map[string]any
 			_ = json.Unmarshal(response.Body.Bytes(), &result)
-			if result["id"] == "" || result["name"] != "Ana" || result["rfc"] != "AAA010101AAA" || result["clabe"] != "002010077777777771" {
+			if result["id"] == "" || result["name"] != "Ana" || result["rfc"] != "AAA010101AAA" ||
+				result["clabeLast4"] != "7771" || result["codiStatus"] != onbdefs.CodiNotRegistered || result["bankReady"] != false {
 				t.Fatalf("unexpected record: %v", result)
+			}
+			if _, hasFull := result["clabe"]; hasFull {
+				t.Fatalf("full clabe must not appear in response: %v", result)
 			}
 			if _, exists := result["taxRegime"]; exists != withTax {
 				t.Fatalf("tax regime presence: %v", result)
@@ -280,7 +284,7 @@ func (pey *scriptedPey) Register(context.Context, []byte) ([]byte, error) {
 	return pey.response, pey.err
 }
 
-func TestPeyAccountIsStoredAndHidden(t *testing.T) {
+func TestPeyAccountIsStoredAndReadinessExposed(t *testing.T) {
 	pey := &scriptedPey{response: []byte(`{"id":"01BANK","codiStatus":"PENDING"}`)}
 	h := newHarness(accdomain.StrictPolicy(), pey)
 	cookie := signUpAndVerify(t, h, "pey@praxis.mx", "5512345678", "123456")
@@ -289,16 +293,64 @@ func TestPeyAccountIsStoredAndHidden(t *testing.T) {
 	if response.Code != http.StatusCreated || pey.calls != 1 {
 		t.Fatalf("create: %d calls=%d %s", response.Code, pey.calls, response.Body)
 	}
-	if strings.Contains(response.Body.String(), "01BANK") || strings.Contains(response.Body.String(), "codiStatus") || strings.Contains(response.Body.String(), "PENDING") {
-		t.Fatalf("status leaked: %s", response.Body)
+	if strings.Contains(response.Body.String(), "01BANK") || strings.Contains(response.Body.String(), "002010077777777771") {
+		t.Fatalf("bank id or full clabe leaked: %s", response.Body)
 	}
 	var created struct {
-		ID string `json:"id"`
+		ID         string `json:"id"`
+		ClabeLast4 string `json:"clabeLast4"`
+		CodiStatus string `json:"codiStatus"`
+		BankReady  bool   `json:"bankReady"`
 	}
 	_ = json.Unmarshal(response.Body.Bytes(), &created)
+	if created.ClabeLast4 != "7771" || created.CodiStatus != onbdefs.CodiPending || created.BankReady {
+		t.Fatalf("readiness in response: %+v", created)
+	}
 	stored, found := h.onbRepo.Find(created.ID)
 	if !found || stored.BankAccountID != "01BANK" || stored.CodiStatus != onbdefs.CodiPending {
 		t.Fatalf("stored: found=%v %+v", found, stored)
+	}
+}
+
+func TestRetryBankAccountAfterSoftFail(t *testing.T) {
+	pey := &scriptedPey{err: errors.New("pey down")}
+	h := newHarness(accdomain.StrictPolicy(), pey)
+	cookie := signUpAndVerify(t, h, "retry@praxis.mx", "5512345678", "123456")
+
+	createdRes := submit(h.handler, validInput(), cookie)
+	if createdRes.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", createdRes.Code, createdRes.Body)
+	}
+	var created struct {
+		ID        string `json:"id"`
+		BankReady bool   `json:"bankReady"`
+	}
+	_ = json.Unmarshal(createdRes.Body.Bytes(), &created)
+	if created.BankReady {
+		t.Fatal("expected soft-fail not ready")
+	}
+
+	pey.err = nil
+	pey.response = []byte(`{"id":"01RETRY","codiStatus":"PENDING"}`)
+	retryReq := httptest.NewRequest(http.MethodPost, "/api/onboarding/"+created.ID+"/bank-account/retry", nil)
+	retryReq.AddCookie(cookie)
+	retryRes := httptest.NewRecorder()
+	h.handler.ServeHTTP(retryRes, retryReq)
+	if retryRes.Code != http.StatusOK {
+		t.Fatalf("retry: %d %s", retryRes.Code, retryRes.Body)
+	}
+	var retried struct {
+		CodiStatus string `json:"codiStatus"`
+		BankReady  bool   `json:"bankReady"`
+		ClabeLast4 string `json:"clabeLast4"`
+	}
+	_ = json.Unmarshal(retryRes.Body.Bytes(), &retried)
+	if retried.CodiStatus != onbdefs.CodiPending || retried.BankReady || retried.ClabeLast4 != "7771" {
+		t.Fatalf("retry body: %+v", retried)
+	}
+	stored, found := h.onbRepo.Find(created.ID)
+	if !found || stored.BankAccountID != "01RETRY" {
+		t.Fatalf("stored after retry: found=%v %+v", found, stored)
 	}
 }
 
@@ -312,9 +364,15 @@ func TestPeyFailureKeepsSavedUser(t *testing.T) {
 		t.Fatalf("create: %d %s", response.Code, response.Body)
 	}
 	var created struct {
-		ID string `json:"id"`
+		ID         string `json:"id"`
+		ClabeLast4 string `json:"clabeLast4"`
+		CodiStatus string `json:"codiStatus"`
+		BankReady  bool   `json:"bankReady"`
 	}
 	_ = json.Unmarshal(response.Body.Bytes(), &created)
+	if created.ClabeLast4 != "7771" || created.CodiStatus != onbdefs.CodiNotRegistered || created.BankReady {
+		t.Fatalf("readiness after soft-fail: %+v", created)
+	}
 	stored, found := h.onbRepo.Find(created.ID)
 	if !found || stored.BankAccountID != "" || stored.CodiStatus != domain.NotRegisteredStatus() {
 		t.Fatalf("stored: found=%v %+v", found, stored)
@@ -516,6 +574,25 @@ func TestMalformedRequests(t *testing.T) {
 	}
 }
 
+func TestHealth(t *testing.T) {
+	h := newHarness(accdomain.StrictPolicy(), nil)
+	response := httptest.NewRecorder()
+	h.handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/health", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status: got %d", response.Code)
+	}
+	if ct := response.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("Content-Type: got %q", ct)
+	}
+	var body healthResponse
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Status != "ok" {
+		t.Fatalf("status field: got %q", body.Status)
+	}
+}
+
 func TestHTTPStatusCodes(t *testing.T) {
 	h := newHarness(accdomain.StrictPolicy(), nil)
 	cookie := signUpAndVerify(t, h, "http@praxis.mx", "5512345678", "123456")
@@ -526,7 +603,7 @@ func TestHTTPStatusCodes(t *testing.T) {
 		status                          int
 	}{
 		{"GET", "/api/health", "", "", false, 200},
-		{"GET", "/api/contractors", "", "", false, 200},
+		{"GET", "/api/contractors", "", "", false, 404},
 		{"GET", "/api/onboarding/missing", "", "", false, 401},
 		{"GET", "/api/onboarding/missing", "", "", true, 404},
 		{"PUT", "/api/onboarding", "", "", false, 405},
@@ -682,7 +759,9 @@ func TestDashboardProfile(t *testing.T) {
 			if dashboard.ContractorID != created.ID || dashboard.Name != "Ana" || dashboard.FirstCustomer.Email != "luis@example.com" ||
 				dashboard.Business.TaxpayerType != dashboarddomain.TaxpayerTypeCompany ||
 				dashboard.Onboarding.Status != wantStatus || len(dashboard.Onboarding.PendingFields) != wantPending ||
-				(dashboard.Business.TaxRegime != nil) != withTax {
+				(dashboard.Business.TaxRegime != nil) != withTax ||
+				dashboard.Business.ClabeLast4 == nil || *dashboard.Business.ClabeLast4 != "7771" ||
+				dashboard.Business.CodiStatus != onbdefs.CodiNotRegistered || dashboard.Business.BankReady {
 				t.Fatalf("unexpected dashboard: %s", response.Body)
 			}
 		})
@@ -921,6 +1000,16 @@ func TestDemoModeAndSeedIdempotency(t *testing.T) {
 	if profileRes.Code != http.StatusOK || !strings.Contains(profileRes.Body.String(), "Ana García López") {
 		t.Fatalf("demo profile: %d %s", profileRes.Code, profileRes.Body)
 	}
+	var demoProfile struct {
+		Business struct {
+			CodiStatus string `json:"codiStatus"`
+			BankReady  bool   `json:"bankReady"`
+		} `json:"business"`
+	}
+	_ = json.Unmarshal(profileRes.Body.Bytes(), &demoProfile)
+	if !demoProfile.Business.BankReady || demoProfile.Business.CodiStatus != onbdefs.CodiActive {
+		t.Fatalf("demo bank readiness: %+v body=%s", demoProfile.Business, profileRes.Body)
+	}
 
 	// Demo account cannot change PIN via recovery.
 	demoReset := doJSON(h.handler, http.MethodPost, "/api/auth/pin-recovery/confirm", map[string]string{
@@ -1083,6 +1172,28 @@ func TestPaymentRefreshesPendingCodiStatusFromPey(t *testing.T) {
 	handler.ServeHTTP(payRec, payReq)
 	if payRec.Code != http.StatusCreated {
 		t.Fatalf("expected 201 after refreshing ACTIVE status, got %d: %s", payRec.Code, payRec.Body.String())
+	}
+	var createdPay struct {
+		ID       string `json:"id"`
+		ClientID string `json:"clientId"`
+		Status   string `json:"status"`
+	}
+	if err := json.Unmarshal(payRec.Body.Bytes(), &createdPay); err != nil || createdPay.ID == "" || createdPay.Status != "PENDING_PAYMENT" {
+		t.Fatalf("payment body: %v %s", err, payRec.Body.String())
+	}
+	listReq := httptest.NewRequest(http.MethodGet, "/api/contractors/"+created.ID+"/payments", nil)
+	listReq.AddCookie(cookie)
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+	if listRec.Code != http.StatusOK || !strings.Contains(listRec.Body.String(), `"id":"`+createdPay.ID+`"`) || !strings.Contains(listRec.Body.String(), `"status":"PENDING_PAYMENT"`) {
+		t.Fatalf("list after create: %d %s", listRec.Code, listRec.Body.String())
+	}
+	findReq := httptest.NewRequest(http.MethodGet, "/api/contractors/"+created.ID+"/payments/"+createdPay.ID, nil)
+	findReq.AddCookie(cookie)
+	findRec := httptest.NewRecorder()
+	handler.ServeHTTP(findRec, findReq)
+	if findRec.Code != http.StatusOK || !strings.Contains(findRec.Body.String(), `"id":"`+createdPay.ID+`"`) {
+		t.Fatalf("find after create: %d %s", findRec.Code, findRec.Body.String())
 	}
 	if !lookedUp {
 		t.Fatal("expected GET /bank-account/01BANKPENDING lookup")

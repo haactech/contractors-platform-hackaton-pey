@@ -48,9 +48,6 @@ const (
 	FieldClabe            Field = "clabe"
 )
 
-// ClabeVisibleDigits is how many trailing CLABE digits the dashboard shows.
-const ClabeVisibleDigits = 4
-
 // Contractor is the data the profile needs, independent of its origin.
 type Contractor struct {
 	ID               string
@@ -60,8 +57,13 @@ type Contractor struct {
 	BusinessActivity string
 	RFC              string
 	TaxRegime        *string
-	CLABE            string
-	FirstCustomer    FirstCustomer
+	// ClabeLast4 is the masked deposit account; empty when no CLABE is on file.
+	ClabeLast4 string
+	// CodiStatus is the Pey bank activation status from onboarding.
+	CodiStatus string
+	// BankReady is true when the contractor can receive charges through Pey.
+	BankReady     bool
+	FirstCustomer FirstCustomer
 }
 
 // FirstCustomer is the customer captured during onboarding (`client`): the
@@ -97,6 +99,10 @@ type Business struct {
 	TaxpayerType TaxpayerType
 	// ClabeLast4 masks the deposit account; nil when no CLABE is on file.
 	ClabeLast4 *string
+	// CodiStatus mirrors onboarding Pey activation (not_registered|PENDING|…).
+	CodiStatus string
+	// BankReady is true when Pey can receive charges for this contractor.
+	BankReady bool
 }
 
 type OnboardingSummary struct {
@@ -121,7 +127,9 @@ func NewProfile(contractor Contractor) Profile {
 			RFC:          contractor.RFC,
 			TaxRegime:    copyString(contractor.TaxRegime),
 			TaxpayerType: taxpayerTypeFromRFC(contractor.RFC),
-			ClabeLast4:   clabeLast4(contractor.CLABE),
+			ClabeLast4:   optionalClabeLast4(contractor.ClabeLast4),
+			CodiStatus:   contractor.CodiStatus,
+			BankReady:    contractor.BankReady,
 		},
 		FirstCustomer: contractor.FirstCustomer,
 		Onboarding:    OnboardingSummary{Status: status, PendingFields: pending},
@@ -142,18 +150,18 @@ func pendingFields(contractor Contractor) []Field {
 	if contractor.TaxRegime == nil {
 		pending = append(pending, FieldTaxRegime)
 	}
-	if contractor.CLABE == "" {
+	if contractor.ClabeLast4 == "" {
 		pending = append(pending, FieldClabe)
 	}
 	return pending
 }
 
-func clabeLast4(clabe string) *string {
-	if len(clabe) < ClabeVisibleDigits {
+func optionalClabeLast4(last4 string) *string {
+	if last4 == "" {
 		return nil
 	}
-	last := clabe[len(clabe)-ClabeVisibleDigits:]
-	return &last
+	copied := last4
+	return &copied
 }
 
 func taxpayerTypeFromRFC(rfc string) TaxpayerType {

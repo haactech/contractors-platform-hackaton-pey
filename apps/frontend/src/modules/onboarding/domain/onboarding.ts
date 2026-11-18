@@ -27,8 +27,19 @@ export interface OnboardingInput {
   clabe: string;
 }
 
-export interface Onboarding extends OnboardingInput {
+/** Public onboarding record from the API (full CLABE is write-only). */
+export interface Onboarding {
   id: string;
+  name: string;
+  profession: string;
+  client: { name: string; phone: string; email: string };
+  taxRegime?: string;
+  businessName: string;
+  businessActivity: string;
+  rfc: string;
+  clabeLast4: string;
+  codiStatus: 'not_registered' | 'PENDING' | 'PROCESSING' | 'ACTIVE' | 'ERROR';
+  bankReady: boolean;
 }
 
 export type FieldErrors = Record<string, string>;

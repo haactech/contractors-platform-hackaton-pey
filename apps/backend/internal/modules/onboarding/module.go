@@ -42,11 +42,13 @@ func Register(
 	handler := presentation.New(
 		application.NewRegisterUser(repository, banks, owners, clients),
 		application.NewUpdateUser(repository, banks, clients),
+		application.NewRetryBankRegistration(repository, banks, clients),
 		read,
 	)
 	mux.HandleFunc("POST /api/onboarding", guard.Session(handler.Create))
 	mux.HandleFunc("GET /api/onboarding/{id}", guard.Contractor("id", handler.Find))
 	mux.HandleFunc("PATCH /api/onboarding/{id}", guard.Contractor("id", handler.Update))
+	mux.HandleFunc("POST /api/onboarding/{id}/bank-account/retry", guard.Contractor("id", handler.RetryBank))
 	return Module{
 		Reader: read,
 		Seed:   seed.Ensure,

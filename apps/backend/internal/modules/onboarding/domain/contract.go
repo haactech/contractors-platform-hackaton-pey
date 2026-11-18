@@ -124,6 +124,19 @@ func NotRegisteredStatus() string {
 	return definitions.CodiNotRegistered
 }
 
+// ClabeLast4 devuelve los últimos dígitos visibles de la CLABE, o vacío si no hay.
+func ClabeLast4(clabe string) string {
+	if len(clabe) < definitions.CLABELength {
+		return ""
+	}
+	return clabe[len(clabe)-4:]
+}
+
+// BankReady indica si la cuenta Pey puede recibir cobros (id + ACTIVE).
+func BankReady(user User) bool {
+	return user.BankAccountID != "" && user.CodiStatus == definitions.CodiActive
+}
+
 // EncodeRegistration arma el cuerpo que Pey espera para registrar la CLABE guardada.
 func EncodeRegistration(user User) ([]byte, bool) {
 	if user.CLABE == "" {
@@ -137,12 +150,16 @@ func EncodeRegistration(user User) ([]byte, bool) {
 	if alias == "" {
 		alias = user.Name
 	}
-	body, err := json.Marshal(map[string]string{
+	payload := map[string]string{
 		definitions.PeyAlias:  alias,
 		definitions.PeyName:   name,
 		definitions.PeyCLABE:  user.CLABE,
 		definitions.PeyEntity: entity,
-	})
+	}
+	if user.RFC != "" {
+		payload[definitions.PeyTaxID] = user.RFC
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, false
 	}
@@ -195,20 +212,24 @@ func knownCodiStatus(status string) bool {
 	}
 }
 
-// View proyecta el usuario al JSON que el formulario ya recibe.
+// View proyecta el usuario al JSON público (sin CLABE completa ni bankAccountId).
 func View(user User) Onboarding {
+	status := user.CodiStatus
+	if status == "" {
+		status = NotRegisteredStatus()
+	}
 	return Onboarding{
-		ID: user.ID,
-		Input: Input{
-			Name:             user.Name,
-			Profession:       user.Profession,
-			Client:           Client{Name: user.Customer.Name, Phone: user.Customer.Phone, Email: user.Customer.Email},
-			TaxRegime:        CopyText(user.TaxRegime),
-			BusinessName:     user.BusinessName,
-			BusinessActivity: user.BusinessActivity,
-			RFC:              user.RFC,
-			CLABE:            user.CLABE,
-		},
+		ID:               user.ID,
+		Name:             user.Name,
+		Profession:       user.Profession,
+		Client:           Client{Name: user.Customer.Name, Phone: user.Customer.Phone, Email: user.Customer.Email},
+		TaxRegime:        CopyText(user.TaxRegime),
+		BusinessName:     user.BusinessName,
+		BusinessActivity: user.BusinessActivity,
+		RFC:              user.RFC,
+		ClabeLast4:       ClabeLast4(user.CLABE),
+		CodiStatus:       status,
+		BankReady:        BankReady(user),
 	}
 }
 

@@ -61,6 +61,11 @@ func (act *RegisterUser) Create(ctx context.Context, input domain.Input) (domain
 	}
 	if act.owners != nil {
 		if err := act.owners.Claim(ctx, saved.ID); err != nil {
+			if act.clients != nil {
+				if removeClientsErr := act.clients.RemoveForVendor(saved.ID); removeClientsErr != nil {
+					log.Printf("onboarding: remove clients %s after claim failure: %v", saved.ID, removeClientsErr)
+				}
+			}
 			if removeErr := act.repository.Remove(saved.ID); removeErr != nil {
 				log.Printf("onboarding: remove vendor %s after claim failure: %v", saved.ID, removeErr)
 			}

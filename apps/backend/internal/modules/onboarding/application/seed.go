@@ -1,13 +1,15 @@
 package application
 
 import (
+	"contractors-platform/backend/internal/modules/onboarding/definitions"
 	"contractors-platform/backend/internal/modules/onboarding/domain"
 	"errors"
 	"fmt"
 )
 
 // SeedUser creates a contractor record idempotently for system seeding (such as the demo account)
-// without calling Pey or binding through Owners.
+// without calling Pey or binding through Owners. It attaches a synthetic ACTIVE bank account so
+// Stage 2 payment create can be exercised offline.
 type SeedUser struct {
 	repository domain.Repository
 	clients    domain.ClientStore
@@ -28,6 +30,9 @@ func (s *SeedUser) Ensure(input domain.Input) (string, error) {
 		if err := s.ensureFirstClient(existing.ID, user.Customer); err != nil {
 			return "", err
 		}
+		if _, err := s.ensureDemoBank(existing); err != nil {
+			return "", err
+		}
 		return existing.ID, nil
 	}
 	saved, err := s.repository.Save(user)
@@ -36,6 +41,9 @@ func (s *SeedUser) Ensure(input domain.Input) (string, error) {
 			if clientErr := s.ensureFirstClient(existing.ID, user.Customer); clientErr != nil {
 				return "", clientErr
 			}
+			if _, bankErr := s.ensureDemoBank(existing); bankErr != nil {
+				return "", bankErr
+			}
 			return existing.ID, nil
 		}
 	}
@@ -43,6 +51,11 @@ func (s *SeedUser) Ensure(input domain.Input) (string, error) {
 		return "", err
 	}
 	if err := s.ensureFirstClient(saved.ID, saved.Customer); err != nil {
+		_ = s.repository.Remove(saved.ID)
+		return "", err
+	}
+	if _, err := s.ensureDemoBank(saved); err != nil {
+		_ = s.clientsRemove(saved.ID)
 		_ = s.repository.Remove(saved.ID)
 		return "", err
 	}
@@ -61,4 +74,29 @@ func (s *SeedUser) ensureFirstClient(vendorID string, customer domain.Customer) 
 		return nil
 	}
 	return s.clients.SaveFirst(vendorID, customer)
+}
+
+func (s *SeedUser) ensureDemoBank(user domain.User) (domain.User, error) {
+	if domain.BankReady(user) {
+		return user, nil
+	}
+	updated, ok := domain.AttachBankAccount(user, domain.BankAccount{
+		ID:     definitions.DemoBankAccountID,
+		Status: definitions.CodiActive,
+	})
+	if !ok {
+		return user, fmt.Errorf("invalid demo bank attachment")
+	}
+	recorded, err := s.repository.RecordBankAccount(updated)
+	if err != nil {
+		return user, err
+	}
+	return recorded, nil
+}
+
+func (s *SeedUser) clientsRemove(vendorID string) error {
+	if s.clients == nil {
+		return nil
+	}
+	return s.clients.RemoveForVendor(vendorID)
 }

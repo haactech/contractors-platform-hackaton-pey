@@ -15,7 +15,7 @@ func TestEncodeRegistrationChoosesEntityFromRFC(t *testing.T) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["entity"] != "BUSINESS" || payload["name"] != business.BusinessName || payload["alias"] != business.BusinessName || payload["clabe"] != business.CLABE {
+	if payload["entity"] != "BUSINESS" || payload["name"] != business.BusinessName || payload["alias"] != business.BusinessName || payload["clabe"] != business.CLABE || payload["taxId"] != business.RFC {
 		t.Fatalf("business body: %s", body)
 	}
 	person := registrationUser(t, "AAAA010101AAA")
@@ -26,7 +26,7 @@ func TestEncodeRegistrationChoosesEntityFromRFC(t *testing.T) {
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatal(err)
 	}
-	if payload["entity"] != "PERSON" || payload["name"] != person.Name || payload["alias"] != person.BusinessName {
+	if payload["entity"] != "PERSON" || payload["name"] != person.Name || payload["alias"] != person.BusinessName || payload["taxId"] != person.RFC {
 		t.Fatalf("person body: %s", body)
 	}
 	noClabe := person
@@ -41,11 +41,15 @@ func TestEncodeRegistrationChoosesEntityFromRFC(t *testing.T) {
 	if !ok {
 		t.Fatal("expected registration without RFC/business name to register as PERSON with CLABE")
 	}
+	payload = map[string]string{}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		t.Fatal(err)
 	}
 	if payload["entity"] != "PERSON" || payload["name"] != noBusiness.Name || payload["alias"] != noBusiness.Name || payload["clabe"] != noBusiness.CLABE {
 		t.Fatalf("no-business body: %s", body)
+	}
+	if _, hasTax := payload["taxId"]; hasTax {
+		t.Fatalf("taxId must be omitted without RFC: %s", body)
 	}
 }
 

@@ -19,6 +19,10 @@ func TestVendorPortReadsOnboardingRowsAndPaymentReopens(t *testing.T) {
 	if _, err := onboardinginfra.NewSQLiteRepository(vendors); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := vendors.Exec(`INSERT INTO vendors (id, name, profession) VALUES (?, ?, ?)`,
+		"vendor-1", "Luis", "Plomero"); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := vendors.Exec(`INSERT INTO bank_accounts (vendor_id, clabe, codi_status, bank_account_id) VALUES (?, ?, ?, ?)`,
 		"vendor-1", "002010077777777771", "ACTIVE", "bank-vendor-1"); err != nil {
 		t.Fatal(err)
@@ -73,6 +77,47 @@ func TestVendorPortReadsOnboardingRowsAndPaymentReopens(t *testing.T) {
 	}
 	if !due.Valid || due.String != "2026-12-01" || stored.BankAccountID != "bank-vendor-1" || stored.ClientID != "client-1" || stored.AmountCents != 15000 || stored.CreatedAt == "" {
 		t.Fatalf("reopened: due=%+v %+v", due, stored)
+	}
+
+	reader, err := NewSQLiteRepository(reopened)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundPayment, found, err := reader.Find("pay-1")
+	if err != nil || !found || foundPayment.ClientID != "client-1" || foundPayment.DueDate != "2026-12-01" {
+		t.Fatalf("find: found=%v err=%v %+v", found, err, foundPayment)
+	}
+	listed, err := reader.ListByVendor("vendor-1")
+	if err != nil || len(listed) != 1 || listed[0].ID != "pay-1" {
+		t.Fatalf("list: %v %+v", err, listed)
+	}
+	empty, err := reader.ListByVendor("missing")
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty list: %v %+v", err, empty)
+	}
+}
+
+func TestVendorExistsWithoutBankReturnsEmptyAccount(t *testing.T) {
+	vendors, err := database.OpenSQLite(filepath.Join(t.TempDir(), "vendors.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer vendors.Close()
+	if _, err := onboardinginfra.NewSQLiteRepository(vendors); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := vendors.Exec(`INSERT INTO vendors (id, name, profession) VALUES (?, ?, ?)`,
+		"vendor-soft", "Ana", "Diseñadora"); err != nil {
+		t.Fatal(err)
+	}
+
+	source := NewSQLiteVendors(vendors)
+	account, found, err := source.Account("vendor-soft")
+	if err != nil || !found || account.BankAccountID != "" || account.CodiStatus != "" {
+		t.Fatalf("expected found empty account, got found=%v err=%v %+v", found, err, account)
+	}
+	if _, found, err := source.Account("missing"); err != nil || found {
+		t.Fatalf("missing vendor: found=%v err=%v", found, err)
 	}
 }
 

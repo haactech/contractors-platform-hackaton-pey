@@ -250,6 +250,7 @@ func Attach(payment Payment, result Result) Payment {
 type View struct {
 	ID             string `json:"id"`
 	VendorID       string `json:"onboardingId"`
+	ClientID       string `json:"clientId,omitempty"`
 	ClientName     string `json:"clientName"`
 	ClientPhone    string `json:"clientPhone,omitempty"`
 	ClientEmail    string `json:"clientEmail,omitempty"`
@@ -271,6 +272,7 @@ func Present(payment Payment) View {
 	view := View{
 		ID:             payment.ID,
 		VendorID:       payment.VendorID,
+		ClientID:       payment.ClientID,
 		ClientName:     payment.ClientName,
 		ClientPhone:    payment.ClientPhone,
 		ClientEmail:    payment.ClientEmail,
@@ -291,9 +293,16 @@ func Present(payment Payment) View {
 	return view
 }
 
-func VendorMissingMessage() string { return definitions.MessageVendorMissing }
-func ClientMissingMessage() string { return definitions.MessageClientMissing }
-func AccountMessage() string       { return definitions.MessageAccount }
+// LinksReady indica si las URLs de retorno son HTTPS usables por Pey.
+func LinksReady(links Links) bool {
+	return httpsURL(links.Success) && httpsURL(links.Back)
+}
+
+func VendorMissingMessage() string  { return definitions.MessageVendorMissing }
+func PaymentMissingMessage() string { return definitions.MessagePaymentMissing }
+func ClientMissingMessage() string  { return definitions.MessageClientMissing }
+func AccountMessage() string        { return definitions.MessageAccount }
+func LinksMessage() string          { return definitions.MessageLinks }
 func SaveMessage() string          { return definitions.MessageSave }
 func PeyMessage() string           { return definitions.MessagePey }
 func ReviewMessage() string        { return definitions.MessageReview }

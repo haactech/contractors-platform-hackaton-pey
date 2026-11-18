@@ -241,6 +241,12 @@ func (repository *SQLiteRepository) Find(vendorID, clientID string) (domain.Clie
 	return client, true, nil
 }
 
+// DeleteByVendor elimina todos los clientes de ese vendedor.
+func (repository *SQLiteRepository) DeleteByVendor(vendorID string) error {
+	_, err := repository.db.Exec(`DELETE FROM clients WHERE vendor_id = ?`, vendorID)
+	return err
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }

@@ -41,7 +41,7 @@ func Allow(client Client) map[string]string {
 	}
 	if client.FromOnboarding {
 		if !onboardingPhone(client.Phone) {
-			fieldErrors[definitions.FieldPhone] = definitions.MessagePhone
+			fieldErrors[definitions.FieldPhone] = definitions.MessagePhoneOnboarding
 		}
 	} else if len(digits(client.Phone)) != definitions.PhoneDigits {
 		fieldErrors[definitions.FieldPhone] = definitions.MessagePhone
@@ -118,7 +118,7 @@ func dashboardPhone(phone string) string {
 
 func onboardingPhone(phone string) bool {
 	count := len(digits(phone))
-	if count < 7 || count > 15 {
+	if count < definitions.OnboardingPhoneMinDigits || count > definitions.OnboardingPhoneMaxDigits {
 		return false
 	}
 	for _, char := range phone {

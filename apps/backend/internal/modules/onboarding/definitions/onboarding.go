@@ -27,7 +27,10 @@ const (
 )
 
 const (
-	MaxRunes       = 255
+	MaxRunes = 255
+	// PhoneMin/MaxDigits apply to the nested first client on the onboarding form.
+	// Dashboard client writes require exactly 10 Mexican digits (clients.PhoneDigits).
+	// payments CODI_PUSH needs a 10-digit national number after stripping leading 52.
 	PhoneMinDigits = 7
 	PhoneMaxDigits = 15
 )
@@ -40,11 +43,16 @@ const (
 	CodiError         = "ERROR"
 )
 
+// DemoBankAccountID is the synthetic Pey bank id used when seeding the demo
+// contractor without calling api.pey.mx. Not a real Banxico account.
+const DemoBankAccountID = "demo-bank-account"
+
 const (
 	PeyAlias      = "alias"
 	PeyName       = "name"
 	PeyCLABE      = "clabe"
 	PeyEntity     = "entity"
+	PeyTaxID      = "taxId"
 	PeyID         = "id"
 	PeyCodiStatus = "codiStatus"
 )

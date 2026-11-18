@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"contractors-platform/backend/internal/modules/payments/definitions"
 	"contractors-platform/backend/internal/modules/payments/domain"
 	"errors"
 	"log"
@@ -45,6 +46,9 @@ func (act *CreatePayment) Create(ctx context.Context, input domain.Request) (dom
 	}
 	if !domain.AccountReady(account) {
 		return domain.View{}, map[string]string{domain.MethodField(): domain.AccountMessage()}, nil
+	}
+	if payment.Method == definitions.MethodPaymentLink && !domain.LinksReady(act.links) {
+		return domain.View{}, map[string]string{domain.MethodField(): domain.LinksMessage()}, nil
 	}
 	payment.ID, err = act.repository.Allocate()
 	if err != nil {

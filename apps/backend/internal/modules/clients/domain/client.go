@@ -51,6 +51,8 @@ type Repository interface {
 	Update(Client) (Client, error)
 	List(vendorID string) ([]Client, error)
 	Find(vendorID, clientID string) (Client, bool, error)
+	// DeleteByVendor removes every client of that vendor (onboarding rollback).
+	DeleteByVendor(vendorID string) error
 }
 
 // Vendors indica si el alta del vendedor existe. No la modifica.

@@ -1,4 +1,4 @@
-import type { ApiErrorResponse, CustomerRowDto, VendorClientDto } from '@platform/contracts';
+import type { ApiErrorResponse, CustomerRowDto, VendorClientDto, VendorClientWriteDto } from '@platform/contracts';
 import { DashboardApiError, type CustomersDirectoryGateway } from '../application/dashboard-gateway';
 import {
   customerDisplayLabel,
@@ -6,7 +6,7 @@ import {
   type NewCustomerInput,
 } from '../domain/dashboard';
 
-function clientBody(input: NewCustomerInput) {
+function clientBody(input: NewCustomerInput): VendorClientWriteDto {
   return {
     entityType: input.entityType,
     name: input.name,

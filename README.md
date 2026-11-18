@@ -15,9 +15,8 @@ npm run dev
 
 - Frontend: http://localhost:5173
 - Backend: http://127.0.0.1:3001/api/health
-- Contratistas: http://127.0.0.1:3001/api/contractors
 
-Vite redirige `/api` al backend durante desarrollo. El inicio de sesión y registro crea cuentas con correo, teléfono y PIN de 6 dígitos (sesión mediante cookie `HttpOnly` `praxis_session`) ligadas 1:1 al registro de onboarding. Por defecto se guardan en memoria; con `DATABASE_PATH=/ruta/app.db` el backend usa SQLite (Docker y Cloudflare ya lo activan). El listado de contratistas es una colección vacía de arranque.
+Vite redirige `/api` al backend durante desarrollo. El inicio de sesión y registro crea cuentas con correo, teléfono y PIN de 6 dígitos (sesión mediante cookie `HttpOnly` `praxis_session`) ligadas 1:1 al registro de onboarding. Por defecto se guardan en memoria; con `DATABASE_PATH=/ruta/app.db` el backend usa SQLite (Docker y Cloudflare ya lo activan).
 
 ## Autenticación y modo demo
 
@@ -27,6 +26,7 @@ Vite redirige `/api` al backend durante desarrollo. El inicio de sesión y regis
 - **`demo` (activo en `npm run dev`, Docker Compose y Dockerfile de Cloudflare):** omite la verificación obligatoria y el bloqueo, permite cambiar el PIN sin código, devuelve `devCode` para probar el flujo en la UI y siembra automáticamente la cuenta demo:
   - Correo: `demo@praxis.mx` · Teléfono: `+52 55 0000 0000` · PIN: `123456` (o botón **Probar con cuenta demo**).
   - La cuenta demo no permite cambiar su PIN y **no debe usarse con datos reales**.
+  - El seed demo adjunta una cuenta bancaria sintética `ACTIVE` (sin llamar a Pey) para poder probar cobros en local.
 
 Para probar el flujo estricto en desarrollo: `AUTH_MODE=strict npm run dev`. Variables detalladas en [.env.example](.env.example).
 
@@ -57,21 +57,17 @@ docker compose --profile prod down
 apps/
   frontend/src/
     app/                     # Composición y estilos de la aplicación
-    modules/contractors/
-      domain/                # Modelo local, independiente de React y HTTP
-      application/           # Puertos de acceso a datos
-      infrastructure/        # Adaptador HTTP
-      presentation/          # Página y estados de la interfaz
-      index.tsx              # API pública y composición del módulo
+    modules/auth/
+    modules/onboarding/
+    modules/dashboard/
   backend/
     cmd/api/                 # Arranque y cierre del servidor
     internal/app/            # Composición HTTP
+    internal/modules/accounts/
     internal/modules/onboarding/
-      domain/                # Modelo, validación y puerto de repositorio
-      application/           # Casos de uso
-      infrastructure/        # Repositorios en memoria y SQLite
-      presentation/          # Adaptador HTTP
-      module.go              # API pública del módulo
+    internal/modules/clients/
+    internal/modules/payments/
+    internal/modules/dashboard/
 packages/
   contracts/                 # Tipos de transporte compartidos, sin runtime
 ```
@@ -113,6 +109,6 @@ curl -i -b cookies.txt http://127.0.0.1:3001/api/onboarding \
   -d '{"name":"Ana Pérez","profession":"Electricista","client":{"name":"Luis López","phone":"+52 555 123 4567","email":"luis@example.com"},"businessName":"Servicios Pérez","businessActivity":"Instalaciones eléctricas","rfc":"AAA010101AAA","clabe":"002010077777777771"}'
 ```
 
-Los errores usan `{ "message": "…", "errors": { "client.email": "…" } }`; `errors` aparece en validaciones (`422`). JSON inválido o campos desconocidos: `400`; contenido distinto de JSON: `415`; cuerpo mayor a 1 MiB: `413`. Los registros desaparecen al reiniciar el proceso. El onboarding todavía no crea una entrada en el listado de contratistas.
+Los errores usan `{ "message": "…", "errors": { "client.email": "…" } }`; `errors` aparece en validaciones (`422`). JSON inválido o campos desconocidos: `400`; contenido distinto de JSON: `415`; cuerpo mayor a 1 MiB: `413`. Sin `DATABASE_PATH`, los registros en memoria desaparecen al reiniciar el proceso.
 
 El backend se ejecuta con `go run` en desarrollo; después de cambios Go hay que reiniciarlo. Para trabajar sin npm: `cd apps/backend`, `go run ./cmd/api`, `go test -race ./...`.

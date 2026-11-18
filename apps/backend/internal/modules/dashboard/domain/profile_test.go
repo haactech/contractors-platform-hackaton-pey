@@ -27,7 +27,9 @@ func TestNewProfileOnboardingStatus(t *testing.T) {
 		BusinessActivity: "Electricidad",
 		RFC:              "AAAA010101AAA",
 		TaxRegime:        &regime,
-		CLABE:            "002010077777777771",
+		ClabeLast4:       "7771",
+		CodiStatus:       "ACTIVE",
+		BankReady:        true,
 	}).Onboarding
 	if complete.Status != OnboardingStatusComplete || len(complete.PendingFields) != 0 || complete.PendingFields == nil {
 		t.Fatalf("complete: %+v", complete)
@@ -49,8 +51,12 @@ func TestNewProfileCopiesTaxRegime(t *testing.T) {
 }
 
 func TestNewProfileMasksClabe(t *testing.T) {
-	if got := NewProfile(Contractor{CLABE: "002010077777777771"}).Business.ClabeLast4; got == nil || *got != "7771" {
-		t.Fatalf("got %v", got)
+	profile := NewProfile(Contractor{ClabeLast4: "7771", CodiStatus: "PENDING", BankReady: false})
+	if profile.Business.ClabeLast4 == nil || *profile.Business.ClabeLast4 != "7771" {
+		t.Fatalf("clabe: %v", profile.Business.ClabeLast4)
+	}
+	if profile.Business.CodiStatus != "PENDING" || profile.Business.BankReady {
+		t.Fatalf("readiness: %+v", profile.Business)
 	}
 	if got := NewProfile(Contractor{}).Business.ClabeLast4; got != nil {
 		t.Fatalf("legacy record without CLABE: got %q", *got)

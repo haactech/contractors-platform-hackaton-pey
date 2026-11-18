@@ -128,18 +128,35 @@ func TestMatchClientAcceptsMexicanPhoneSuffix(t *testing.T) {
 
 func TestPresentHidesBankID(t *testing.T) {
 	payment := Attach(readyPayment(definitions.MethodCodiQR), Result{PeyID: "pey-qr", QR: "QRDATA", Image: "img"})
+	payment.ClientID = "client-1"
 	view := Present(payment)
 	encoded, err := json.Marshal(view)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if view.CodiQRID != "pey-qr" || view.CodiQRString != "QRDATA" {
+	if view.CodiQRID != "pey-qr" || view.CodiQRString != "QRDATA" || view.ClientID != "client-1" {
 		t.Fatalf("view: %+v", view)
 	}
 	var body map[string]any
 	_ = json.Unmarshal(encoded, &body)
-	if _, exists := body["bankAccountId"]; exists || body["onboardingId"] != "vendor-1" {
+	if _, exists := body["bankAccountId"]; exists || body["onboardingId"] != "vendor-1" || body["clientId"] != "client-1" {
 		t.Fatalf("json: %s", encoded)
+	}
+}
+
+func TestLinksReadyRequiresHTTPS(t *testing.T) {
+	if LinksReady(Links{Success: "https://example.com/ok", Back: "https://example.com/back"}) != true {
+		t.Fatal("rejected valid https links")
+	}
+	for _, links := range []Links{
+		{},
+		{Success: "https://example.com/ok"},
+		{Success: "http://example.com/ok", Back: "https://example.com/back"},
+		{Success: "https://example.com/ok", Back: "ftp://example.com/back"},
+	} {
+		if LinksReady(links) {
+			t.Fatalf("accepted %+v", links)
+		}
 	}
 }
 
